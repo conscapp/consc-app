@@ -2,17 +2,47 @@ from flask import Flask, request, render_template_string, send_file
 import io
 from openai import OpenAI
 from fpdf import FPDF
-
+import sqlite3
 import os
+
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 app = Flask(__name__)
+
+# ================= DATABASE =================
+
+def init_db():
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+
+    c.execute('''
+    CREATE TABLE IF NOT EXISTS systems (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        content TEXT
+    )
+    ''')
+
+    c.execute('''
+    CREATE TABLE IF NOT EXISTS feedback (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        message TEXT,
+        reply TEXT
+    )
+    ''')
+
+    conn.commit()
+    conn.close()
+
+init_db()
+
+# ================= UI =================
 
 HTML = """
 <!doctype html>
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Consc.app — System Builder</title>
+<title>consc.app — System Builder</title>
 </head>
 
 <body style="margin:0; font-family:'Segoe UI Emoji','Apple Color Emoji','Noto Color Emoji',sans-serif; background:#0f172a; color:white;">
@@ -21,8 +51,10 @@ HTML = """
 
 <div style="display:flex; justify-content:space-between;">
   <h2>⚡ consc.app</h2>
-  <a href="/saved" style="color:#38bdf8; margin-right:15px;">Saved</a>
-  <a href="/feedback" style="color:#38bdf8;">Feedback</a>
+  <div>
+    <a href="/saved" style="color:#38bdf8; margin-right:15px;">Saved</a>
+    <a href="/feedback" style="color:#38bdf8;">Feedback</a>
+  </div>
 </div>
 
 <br>
@@ -100,6 +132,7 @@ Save
 PDF
 </button>
 </form>
+
 <br><br>
 
 <h3>💬 Share Feedback</h3>
@@ -134,6 +167,8 @@ function copyResult() {
 </html>
 """
 
+# ================= ROUTES =================
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     result = None
@@ -157,10 +192,7 @@ Struggle: {struggle}
 Why: {why}
 Constraints: {custom}
 
-IMPORTANT:
-Use emojis in EVERY section title.
-
-Build a realistic system.
+Use emojis in titles.
 
 1. 🎯 Goal
 2. 🧠 Identity
@@ -182,106 +214,82 @@ Build a realistic system.
 
     return render_template_string(HTML, result=result)
 
-
-@app.route("/download", methods=["POST"])
-def download():
-    content = request.form.get("content")
-
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-
-    pdf.multi_cell(0, 10, content.encode('latin-1', 'replace').decode('latin-1'))
-
-    return send_file(
-        io.BytesIO(pdf.output(dest='S').encode('latin-1')),
-        as_attachment=True,
-        download_name="consc_system.pdf",
-        mimetype="application/pdf"
-    )
-
+# ================= SAVE SYSTEM =================
 
 @app.route("/save", methods=["POST"])
 def save():
     content = request.form.get("content")
 
-    with open("systems.txt", "a") as f:
-        f.write(content + "\n\n---\n\n")
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+    c.execute("INSERT INTO systems (content) VALUES (?)", (content,))
+    conn.commit()
+    conn.close()
 
     return "<h2>Saved ✅</h2><a href='/'>Back</a>"
 
+# ================= VIEW SYSTEMS =================
 
 @app.route("/saved")
 def saved():
-    try:
-        with open("systems.txt", "r") as f:
-            content = f.read()
-    except:
-        content = ""
-
-    systems = content.split("\n\n---\n\n")
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+    c.execute("SELECT * FROM systems")
+    systems = c.fetchall()
+    conn.close()
 
     html = "<h1>Saved Systems</h1><a href='/'>Back</a><br><br>"
 
-    for i, s in enumerate(systems):
-        if s.strip():
-            html += f"""
-            <div>
-            <pre>{s}</pre>
-            <form method="POST" action="/delete">
-            <input type="hidden" name="index" value="{i}">
-            <button>Delete</button>
-            </form>
-            </div><br>
-            """
+    for system in systems:
+        html += f"""
+        <div>
+        <pre>{system[1]}</pre>
+        <form method="POST" action="/delete">
+        <input type="hidden" name="id" value="{system[0]}">
+        <button>Delete</button>
+        </form>
+        </div><br>
+        """
 
     return html
 
+# ================= DELETE =================
 
 @app.route("/delete", methods=["POST"])
 def delete():
-    index = int(request.form.get("index"))
+    system_id = request.form.get("id")
 
-    with open("systems.txt", "r") as f:
-        systems = f.read().split("\n\n---\n\n")
-
-    if 0 <= index < len(systems):
-        systems.pop(index)
-
-    with open("systems.txt", "w") as f:
-        f.write("\n\n---\n\n".join(systems))
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+    c.execute("DELETE FROM systems WHERE id=?", (system_id,))
+    conn.commit()
+    conn.close()
 
     return "<h2>Deleted 🗑️</h2><a href='/saved'>Back</a>"
 
+# ================= FEEDBACK =================
 
-@app.route("/feedback", methods=["GET"])
-def feedback_page():
-    try:
-        with open("feedback.txt", "r") as f:
-            content = f.read()
-    except:
-        content = ""
+@app.route("/feedback")
+def feedback():
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+    c.execute("SELECT * FROM feedback")
+    entries = c.fetchall()
+    conn.close()
 
-    entries = content.split("\n\n---\n\n")
+    html = "<h1>💬 Feedback</h1><a href='/'>Back</a><br><br>"
 
-    html = """
-    <h1>💬 User Feedback</h1>
-    <a href="/">⬅ Back</a><br><br>
-    """
-
-    for i, entry in enumerate(entries):
-        if entry.strip() == "":
-            continue
-
+    for entry in entries:
         html += f"""
-        <div style="border:1px solid #ccc; padding:15px; margin-bottom:20px;">
-            <pre>{entry}</pre>
+        <div style="margin-bottom:20px;">
+        <pre>👤 {entry[1]}\n💬 {entry[2]}</pre>
+        <p><strong>Reply:</strong> {entry[3]}</p>
 
-            <form method="POST" action="/reply">
-                <input type="hidden" name="index" value="{i}">
-                <input name="reply" placeholder="Write a reply..." style="width:70%;">
-                <button type="submit">Reply</button>
-            </form>
+        <form method="POST" action="/reply">
+        <input type="hidden" name="id" value="{entry[0]}">
+        <input name="reply" placeholder="Write reply">
+        <button>Reply</button>
+        </form>
         </div>
         """
 
@@ -292,28 +300,46 @@ def feedback_submit():
     name = request.form.get("name")
     message = request.form.get("message")
 
-    entry = f"👤 {name}\n💬 {message}"
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+    c.execute("INSERT INTO feedback (name, message, reply) VALUES (?, ?, '')", (name, message))
+    conn.commit()
+    conn.close()
 
-    with open("feedback.txt", "a", encoding="utf-8") as f:
-        f.write(entry + "\n\n---\n\n")
-
-    return "<h2>Thanks for your feedback! 🙌</h2><a href='/'>Back</a>"
-
+    return "<h2>Thanks 🙌</h2><a href='/'>Back</a>"
 
 @app.route("/reply", methods=["POST"])
 def reply():
-    index = int(request.form.get("index"))
+    feedback_id = request.form.get("id")
     reply_text = request.form.get("reply")
 
-    with open("feedback.txt", "r", encoding="utf-8") as f:
-        entries = f.read().split("\n\n---\n\n")
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+    c.execute("UPDATE feedback SET reply=? WHERE id=?", (reply_text, feedback_id))
+    conn.commit()
+    conn.close()
 
-    if 0 <= index < len(entries):
-        entries[index] += f"\n\n🧑‍💻 Reply: {reply_text}"
+    return "<h2>Reply Added ✅</h2><a href='/feedback'>Back</a>"
 
-    with open("feedback.txt", "w", encoding="utf-8") as f:
-        f.write("\n\n---\n\n".join(entries))
+# ================= PDF =================
 
-    return "<h2>Reply added ✅</h2><a href='/feedback'>Back</a>"
+@app.route("/download", methods=["POST"])
+def download():
+    content = request.form.get("content")
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.multi_cell(0, 10, content.encode('latin-1', 'replace').decode('latin-1'))
+
+    return send_file(
+        io.BytesIO(pdf.output(dest='S').encode('latin-1')),
+        as_attachment=True,
+        download_name="consc_system.pdf",
+        mimetype="application/pdf"
+    )
+
+# ================= RUN =================
+
 if __name__ == "__main__":
     app.run(debug=True)
