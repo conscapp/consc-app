@@ -613,9 +613,20 @@ def rate():
 # ─────────────────────────────────────────
 @app.route("/saved")
 def saved():
-    today = date.today().isoformat()
+    today    = date.today().isoformat()
+    per_page = 10
+    page_num = max(1, request.args.get("page", 1, type=int))
+
     conn  = get_db()
-    rows  = conn.execute("SELECT id, content, rating FROM systems ORDER BY id DESC").fetchall()
+    total = conn.execute("SELECT COUNT(*) FROM systems").fetchone()[0]
+    total_pages = max(1, -(-total // per_page))  # ceiling division
+    page_num = min(page_num, total_pages)
+    offset = (page_num - 1) * per_page
+
+    rows = conn.execute(
+        "SELECT id, content, rating FROM systems ORDER BY id DESC LIMIT ? OFFSET ?",
+        (per_page, offset)
+    ).fetchall()
 
     if not rows:
         conn.close()
@@ -655,11 +666,22 @@ def saved():
 
         conn.close()
 
+    prev_html = f'<a href="/saved?page={page_num - 1}" class="btn btn-outline">← Previous</a>' if page_num > 1 else '<span class="btn btn-outline" style="opacity:.35; cursor:default;">← Previous</span>'
+    next_html = f'<a href="/saved?page={page_num + 1}" class="btn btn-outline">Next →</a>' if page_num < total_pages else '<span class="btn btn-outline" style="opacity:.35; cursor:default;">Next →</span>'
+
     body = f"""
-<h2>Saved Systems</h2>
+<div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:20px;">
+  <h2 style="margin:0;">Saved Systems</h2>
+  <span style="font-size:13px; color:var(--muted);">Page {page_num} of {total_pages}</span>
+</div>
 {items_html}
-<br>
-<a href="/" class="btn btn-outline">← Back to Generator</a>
+<div style="display:flex; justify-content:space-between; align-items:center; margin-top:24px;">
+  <a href="/" class="btn btn-outline">← Generator</a>
+  <div style="display:flex; gap:10px;">
+    {prev_html}
+    {next_html}
+  </div>
+</div>
 
 <script>
 function completeToday(systemId) {{
