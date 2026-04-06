@@ -1,9 +1,10 @@
-from flask import Flask, request, render_template_string, send_file, redirect, url_for
+from flask import Flask, request, render_template_string, send_file, redirect, url_for, jsonify
 import io
 from openai import OpenAI
 from fpdf import FPDF
 import sqlite3
 import os
+from datetime import date, timedelta
 
 # ─────────────────────────────────────────
 #  Setup
@@ -37,10 +38,56 @@ def init_db():
             reply   TEXT DEFAULT ''
         )
     ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS daily_progress (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            system_id INTEGER,
+            date      TEXT
+        )
+    ''')
     conn.commit()
     conn.close()
 
 init_db()
+
+# ─────────────────────────────────────────
+#  Streak helper
+# ─────────────────────────────────────────
+def calculate_streak(conn, system_id):
+    rows = conn.execute(
+        "SELECT DISTINCT date FROM daily_progress WHERE system_id = ? ORDER BY date DESC",
+        (system_id,)
+    ).fetchall()
+    dates = {row["date"] for row in rows}
+    streak = 0
+    current = date.today()
+    while current.isoformat() in dates:
+        streak += 1
+        current -= timedelta(days=1)
+    return streak
+
+
+# ─────────────────────────────────────────
+#  /complete_today/<system_id>
+# ─────────────────────────────────────────
+@app.route("/complete_today/<int:system_id>", methods=["POST"])
+def complete_today(system_id):
+    today = date.today().isoformat()
+    conn = get_db()
+    existing = conn.execute(
+        "SELECT id FROM daily_progress WHERE system_id = ? AND date = ?",
+        (system_id, today)
+    ).fetchone()
+    if not existing:
+        conn.execute(
+            "INSERT INTO daily_progress (system_id, date) VALUES (?, ?)",
+            (system_id, today)
+        )
+        conn.commit()
+    streak = calculate_streak(conn, system_id)
+    conn.close()
+    return jsonify({"completed": True, "streak": streak})
+
 
 # ─────────────────────────────────────────
 #  Shared CSS / design tokens
@@ -301,6 +348,51 @@ h3 {
 .row { display: flex; gap: 12px; }
 .row > * { flex: 1; }
 @media (max-width: 540px) { .row { flex-direction: column; } }
+
+/* ── Streak UI ── */
+.streak-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.btn-complete {
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-family: 'Syne', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color .2s, color .2s, background .2s;
+}
+.btn-complete:hover:not(:disabled) {
+  border-color: var(--green);
+  color: var(--green);
+}
+.btn-complete.done {
+  background: rgba(52,211,153,.1);
+  border-color: var(--green);
+  color: var(--green);
+  cursor: default;
+}
+.streak-badge {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 4px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  white-space: nowrap;
+}
+.streak-badge.active {
+  color: #fbbf24;
+  border-color: rgba(251,191,36,.5);
+  background: rgba(251,191,36,.07);
+}
 """
 
 # ─────────────────────────────────────────
@@ -521,31 +613,74 @@ def rate():
 # ─────────────────────────────────────────
 @app.route("/saved")
 def saved():
+    today = date.today().isoformat()
     conn  = get_db()
     rows  = conn.execute("SELECT id, content, rating FROM systems ORDER BY id DESC").fetchall()
-    conn.close()
 
     if not rows:
+        conn.close()
         items_html = '<p style="color:var(--muted);">No saved systems yet. Generate one on the homepage!</p>'
     else:
         items_html = ""
         for row in rows:
+            sid = row["id"]
+            done_today = conn.execute(
+                "SELECT 1 FROM daily_progress WHERE system_id = ? AND date = ?",
+                (sid, today)
+            ).fetchone() is not None
+            streak = calculate_streak(conn, sid)
+
             stars = "⭐" * (row["rating"] or 0)
             preview = row["content"][:300].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+            btn_class = "btn-complete done" if done_today else "btn-complete"
+            btn_label = "Completed Today ✅" if done_today else "Not Done ❌"
+            btn_disabled = "disabled" if done_today else ""
+            badge_class = "streak-badge active" if streak > 0 else "streak-badge"
+            streak_label = f"🔥 {streak} day streak" if streak > 0 else "0 day streak"
+
             items_html += f"""
 <div class="system-item">
   <div style="white-space:pre-wrap; font-size:14px; line-height:1.7;">{preview}{'…' if len(row['content']) > 300 else ''}</div>
   <div class="system-meta">
     {'<span class="stars">' + stars + '</span>' if stars else 'No rating yet'}
-    &nbsp;·&nbsp; ID #{row['id']}
+    &nbsp;·&nbsp; ID #{sid}
+  </div>
+  <div class="streak-row">
+    <button id="btn-{sid}" class="{btn_class}" {btn_disabled}
+            onclick="completeToday({sid})">{btn_label}</button>
+    <span id="streak-{sid}" class="{badge_class}">{streak_label}</span>
   </div>
 </div>"""
+
+        conn.close()
 
     body = f"""
 <h2>Saved Systems</h2>
 {items_html}
 <br>
 <a href="/" class="btn btn-outline">← Back to Generator</a>
+
+<script>
+function completeToday(systemId) {{
+  var btn = document.getElementById('btn-' + systemId);
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  fetch('/complete_today/' + systemId, {{method: 'POST'}})
+    .then(function(r) {{ return r.json(); }})
+    .then(function(data) {{
+      btn.textContent = 'Completed Today ✅';
+      btn.classList.add('done');
+      var badge = document.getElementById('streak-' + systemId);
+      badge.textContent = '🔥 ' + data.streak + ' day streak';
+      badge.classList.add('active');
+    }})
+    .catch(function() {{
+      btn.disabled = false;
+      btn.textContent = 'Not Done ❌';
+    }});
+}}
+</script>
 """
     return page("Saved Systems", body, active="saved")
 
