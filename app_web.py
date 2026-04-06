@@ -132,6 +132,35 @@ Generate System 🚀
 <button>Rate</button>
 </form>
 
+<br><br>
+
+<h3>💬 Share Feedback</h3>
+
+<form method="POST" action="/feedback_submit" style="background:#1e293b; padding:20px; border-radius:10px;">
+<input name="name" placeholder="Your Name" required style="width:100%; padding:10px; margin-bottom:10px;">
+<textarea name="message" placeholder="Your feedback..." required style="width:100%; padding:10px; margin-bottom:10px;"></textarea>
+<button style="background:#22c55e; padding:10px; border:none; border-radius:6px;">
+Submit Feedback
+</button>
+</form>
+@app.route("/feedback_submit", methods=["POST"])
+def feedback_submit():
+    name = request.form.get("name")
+    message = request.form.get("message")
+
+    import sqlite3
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+
+    c.execute(
+        "INSERT INTO feedback (name, message, reply) VALUES (?, ?, '')",
+        (name, message)
+    )
+
+    conn.commit()
+    conn.close()
+
+    return "<h2>Thanks for your feedback! 🙌</h2><a href='/'>Back</a>"
 {% endif %}
 
 </div>
