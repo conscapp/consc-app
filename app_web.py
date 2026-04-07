@@ -1,26 +1,31 @@
 """
-consc.app  --  Full-stack Flask app
-======================================
+consc.app  --  Full-stack Flask app  (PREMIUM EDITION)
+======================================================
 Features:
   * User auth  (signup / login / logout)
   * Password hashing via werkzeug
   * Flask sessions for login state
   * Protected routes  (login required)
-  * System generation with new OpenAI prompt
+  * 3-step onboarding for first-time users
+  * AI system generator with cleaned output
   * Systems linked to logged-in user
   * Personal dashboard with streak counters
-  * PDF download from dashboard
+  * Progress page  (weekly stats, calendar, totals)
+  * Settings page  (account / preferences / danger zone)
+  * Branded PDF download
   * Feedback wall
-  * Dark premium UI
+  * Premium white + green UI, fully responsive
 
 Run locally:
   pip install flask openai fpdf2 werkzeug
   export OPENAI_API_KEY="sk-..."
+  export SECRET_KEY="something-long-and-random"
   python app_web.py
 """
 
 import io
 import os
+import re
 import sqlite3
 from datetime import datetime, timedelta
 from functools import wraps
@@ -108,19 +113,49 @@ init_db()
 
 
 # =======================================================
+#  AI output cleaner
+# =======================================================
+def clean_ai_output(text: str) -> str:
+    """
+    Strip markdown noise from GPT output so it renders cleanly in HTML and PDF.
+    Removes #, ##, ###, **bold**, *italic*, `code`, leading bullets, and
+    collapses runs of blank lines.
+    """
+    if not text:
+        return ""
+
+    # Remove heading hashes at line start
+    text = re.sub(r'^\s{0,3}#{1,6}\s*', '', text, flags=re.MULTILINE)
+
+    # Remove bold/italic wrappers but keep the inner text
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    text = re.sub(r'(?<!\*)\*(?!\s)(.+?)(?<!\s)\*(?!\*)', r'\1', text)
+    text = re.sub(r'__(.+?)__', r'\1', text)
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+
+    # Convert "- " or "* " bullets to a clean bullet
+    text = re.sub(r'^\s*[-*]\s+', '• ', text, flags=re.MULTILINE)
+
+    # Collapse 3+ newlines to 2
+    text = re.sub(r'\n{3,}', '\n\n', text)
+
+    # Strip trailing whitespace per line
+    text = '\n'.join(line.rstrip() for line in text.split('\n'))
+
+    return text.strip()
+
+
+# =======================================================
 #  Daily progress helpers
 # =======================================================
 def get_today() -> str:
-    """Return today's date as a YYYY-MM-DD string (used as the DB key)."""
     return datetime.utcnow().strftime("%Y-%m-%d")
 
 
 def get_today_completion(user_id: int, system_id: int) -> bool:
-    """Return True if the user has marked this system as completed today."""
     conn = get_db()
     row = conn.execute(
-        """SELECT completed
-           FROM daily_progress
+        """SELECT completed FROM daily_progress
            WHERE user_id = ? AND system_id = ? AND date = ?""",
         (user_id, system_id, get_today())
     ).fetchone()
@@ -129,18 +164,6 @@ def get_today_completion(user_id: int, system_id: int) -> bool:
 
 
 def get_streak(user_id: int, system_id: int) -> int:
-    """
-    Return the current consecutive-day streak for a system.
-
-    Algorithm:
-      - Fetch all dates where completed = 1 into a set for O(1) lookup.
-      - If today is already marked done, start counting from today.
-        If today is NOT yet done, start from yesterday so a prior streak
-        is still visible before the user marks today done.
-      - Walk backwards one day at a time and stop at the first gap.
-
-    Returns 0 if no streak exists.
-    """
     conn = get_db()
     rows = conn.execute(
         """SELECT date FROM daily_progress
@@ -153,11 +176,9 @@ def get_streak(user_id: int, system_id: int) -> int:
     if not rows:
         return 0
 
-    completed_dates = {row["date"] for row in rows}   # O(1) membership check
-
+    completed_dates = {row["date"] for row in rows}
     today = datetime.utcnow().date()
 
-    # Start from today if today is done, yesterday otherwise
     if today.strftime("%Y-%m-%d") in completed_dates:
         check = today
     else:
@@ -171,11 +192,44 @@ def get_streak(user_id: int, system_id: int) -> int:
     return streak
 
 
+def get_week_stats(user_id: int, system_id: int):
+    """Return (completed_count, [bool, bool, ...] for last 7 days)."""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT date FROM daily_progress
+           WHERE user_id = ? AND system_id = ? AND completed = 1""",
+        (user_id, system_id)
+    ).fetchall()
+    conn.close()
+    completed_dates = {r["date"] for r in rows}
+
+    today = datetime.utcnow().date()
+    days = []
+    for offset in range(6, -1, -1):  # 6 days ago → today
+        d = today - timedelta(days=offset)
+        days.append({
+            "date": d.strftime("%Y-%m-%d"),
+            "label": d.strftime("%a")[0],
+            "done": d.strftime("%Y-%m-%d") in completed_dates,
+        })
+    completed = sum(1 for d in days if d["done"])
+    return completed, days
+
+
+def get_total_completions(user_id: int) -> int:
+    conn = get_db()
+    row = conn.execute(
+        "SELECT COUNT(*) AS n FROM daily_progress WHERE user_id = ? AND completed = 1",
+        (user_id,)
+    ).fetchone()
+    conn.close()
+    return row["n"] if row else 0
+
+
 # =======================================================
 #  Auth decorator
 # =======================================================
 def login_required(f):
-    """Redirect to /login if the user is not logged in."""
     @wraps(f)
     def decorated(*args, **kwargs):
         if "user_id" not in session:
@@ -193,41 +247,34 @@ BASE_STYLE = """
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* Brand */
   --green:       #16a34a;
   --green-light: #dcfce7;
   --green-mid:   #bbf7d0;
   --green-dark:  #14532d;
 
-  /* Surface */
   --bg:          #f8fafc;
   --bg-alt:      #f1f5f9;
   --card:        #ffffff;
   --sidebar:     #ffffff;
 
-  /* Text */
   --text:        #0f172a;
   --text-muted:  #64748b;
   --text-xs:     #94a3b8;
 
-  /* Chrome */
   --border:      #e2e8f0;
   --border-mid:  #cbd5e1;
   --shadow-sm:   0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
   --shadow-md:   0 4px 16px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.05);
   --shadow-lg:   0 12px 40px rgba(0,0,0,.10), 0 4px 12px rgba(0,0,0,.06);
 
-  /* Radius */
   --r-sm: 8px;
   --r-md: 12px;
   --r-lg: 16px;
   --r-xl: 20px;
 
-  /* Layout */
   --sidebar-w: 240px;
 }
 
-/* ── Reset & Base ── */
 html { font-size: 16px; }
 
 body {
@@ -241,12 +288,8 @@ body {
 }
 
 /* ── Sidebar Layout ── */
-.layout {
-  display: flex;
-  min-height: 100vh;
-}
+.layout { display: flex; min-height: 100vh; }
 
-/* SIDEBAR */
 .sidebar {
   width: var(--sidebar-w);
   background: var(--sidebar);
@@ -259,26 +302,16 @@ body {
   transition: transform .25s ease;
 }
 
-.sidebar-logo {
-  padding: 24px 20px 20px;
-  border-bottom: 1px solid var(--border);
-}
-.sidebar-logo a {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  text-decoration: none;
-  color: var(--text);
-}
+.sidebar-logo { padding: 24px 20px 20px; border-bottom: 1px solid var(--border); }
+.sidebar-logo a { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
 .logo-mark {
   width: 32px; height: 32px;
   background: var(--green);
   border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
-  color: white;
-  font-size: 16px;
-  font-weight: 700;
+  color: white; font-size: 16px; font-weight: 700;
   flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(22,163,74,.3);
 }
 .logo-text {
   font-family: 'DM Serif Display', serif;
@@ -294,102 +327,54 @@ body {
   margin-top: 1px;
 }
 
-.sidebar-nav {
-  flex: 1;
-  padding: 12px 12px;
-  overflow-y: auto;
-}
+.sidebar-nav { flex: 1; padding: 12px; overflow-y: auto; }
 
 .nav-section-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  color: var(--text-xs);
-  padding: 8px 8px 6px;
-  margin-top: 8px;
+  font-size: 10px; font-weight: 600; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--text-xs);
+  padding: 8px 8px 6px; margin-top: 8px;
 }
 
 .nav-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: flex; align-items: center; gap: 10px;
   padding: 9px 10px;
   border-radius: var(--r-sm);
   text-decoration: none;
   color: var(--text-muted);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 14px; font-weight: 500;
   transition: all .15s ease;
   margin-bottom: 2px;
 }
-.nav-item:hover {
-  background: var(--bg-alt);
-  color: var(--text);
-}
-.nav-item.active {
-  background: var(--green-light);
-  color: var(--green-dark);
-  font-weight: 600;
-}
-.nav-item.active .nav-icon { color: var(--green); }
-.nav-icon {
-  width: 18px; height: 18px;
-  opacity: .7;
-  flex-shrink: 0;
-}
-.nav-item.active .nav-icon { opacity: 1; }
+.nav-item:hover { background: var(--bg-alt); color: var(--text); }
+.nav-item.active { background: var(--green-light); color: var(--green-dark); font-weight: 600; }
+.nav-item.active .nav-icon { color: var(--green); opacity: 1; }
+.nav-icon { width: 18px; height: 18px; opacity: .7; flex-shrink: 0; }
 
-.sidebar-footer {
-  padding: 16px;
-  border-top: 1px solid var(--border);
-}
-.sidebar-user {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px;
-  border-radius: var(--r-sm);
-}
+.sidebar-footer { padding: 16px; border-top: 1px solid var(--border); }
+.sidebar-user { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: var(--r-sm); }
 .avatar {
   width: 32px; height: 32px;
   border-radius: 50%;
   background: var(--green-light);
   display: flex; align-items: center; justify-content: center;
-  font-weight: 600;
-  font-size: 13px;
+  font-weight: 600; font-size: 13px;
   color: var(--green-dark);
   flex-shrink: 0;
 }
-.user-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  line-height: 1.2;
-}
-.user-role {
-  font-size: 11px;
-  color: var(--text-muted);
-}
+.user-name { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.2; }
+.user-role { font-size: 11px; color: var(--text-muted); }
 .sidebar-logout {
-  display: block;
-  text-align: center;
-  margin-top: 8px;
-  padding: 7px;
+  display: block; text-align: center;
+  margin-top: 8px; padding: 7px;
   border-radius: var(--r-sm);
-  font-size: 13px;
-  color: var(--text-muted);
+  font-size: 13px; color: var(--text-muted);
   text-decoration: none;
   transition: all .15s;
   border: 1px solid var(--border);
 }
-.sidebar-logout:hover {
-  background: #fef2f2;
-  color: #dc2626;
-  border-color: #fecaca;
-}
+.sidebar-logout:hover { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
 
-/* ── Main Content ── */
+/* ── Main ── */
 .main {
   margin-left: var(--sidebar-w);
   flex: 1;
@@ -398,7 +383,6 @@ body {
   flex-direction: column;
 }
 
-/* ── Top Header ── */
 .topbar {
   background: var(--card);
   border-bottom: 1px solid var(--border);
@@ -407,35 +391,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  position: sticky;
-  top: 0;
-  z-index: 50;
+  position: sticky; top: 0; z-index: 50;
 }
-.topbar-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.topbar-breadcrumb {
-  font-size: 13px;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
+.topbar-breadcrumb { font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
 .topbar-breadcrumb span { color: var(--text-xs); }
-.topbar-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
+.topbar-right { display: flex; align-items: center; gap: 12px; }
 .topbar-user-pill {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: flex; align-items: center; gap: 8px;
   padding: 5px 12px 5px 6px;
   border: 1px solid var(--border);
   border-radius: 100px;
@@ -444,7 +406,6 @@ body {
   font-weight: 500;
 }
 
-/* Mobile menu toggle */
 .menu-toggle {
   display: none;
   background: none;
@@ -456,30 +417,17 @@ body {
   color: var(--text);
 }
 
-/* ── Page Content ── */
-.content {
-  flex: 1;
-  padding: 36px 40px;
-  max-width: 980px;
-  width: 100%;
-}
+.content { flex: 1; padding: 36px 40px; max-width: 980px; width: 100%; }
 
-.page-header {
-  margin-bottom: 28px;
-}
+.page-header { margin-bottom: 28px; }
 .page-header h1 {
   font-family: 'DM Serif Display', serif;
-  font-size: 28px;
-  font-weight: 400;
+  font-size: 28px; font-weight: 400;
   letter-spacing: -.5px;
   color: var(--text);
   line-height: 1.2;
 }
-.page-header p {
-  margin-top: 6px;
-  font-size: 14px;
-  color: var(--text-muted);
-}
+.page-header p { margin-top: 6px; font-size: 14px; color: var(--text-muted); }
 
 /* ── Cards ── */
 .card {
@@ -490,10 +438,6 @@ body {
   box-shadow: var(--shadow-sm);
   margin-bottom: 20px;
 }
-.card-sm {
-  padding: 20px;
-  border-radius: var(--r-md);
-}
 .card-header {
   display: flex;
   align-items: center;
@@ -503,34 +447,22 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .card-title {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: .3px;
+  font-size: 13px; font-weight: 600;
+  letter-spacing: .8px;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: .8px;
 }
-.card-label {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-}
+.card-label { font-size: 15px; font-weight: 600; color: var(--text); }
 
-/* ── Form Elements ── */
-.field {
-  margin-bottom: 18px;
-}
+/* ── Form ── */
+.field { margin-bottom: 18px; }
 .field label {
   display: block;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 13px; font-weight: 500;
   color: var(--text);
   margin-bottom: 6px;
 }
-.field label span {
-  color: var(--text-muted);
-  font-weight: 400;
-}
+.field label span { color: var(--text-muted); font-weight: 400; }
 .field input,
 .field select,
 .field textarea {
@@ -542,19 +474,17 @@ body {
   color: var(--text);
   font-family: 'DM Sans', sans-serif;
   font-size: 14px;
-  transition: border-color .15s, box-shadow .15s;
+  transition: border-color .15s, box-shadow .15s, background .15s;
   outline: none;
   appearance: none;
 }
-.field input::placeholder,
-.field textarea::placeholder { color: var(--text-xs); }
-.field input:focus,
-.field select:focus,
-.field textarea:focus {
+.field input::placeholder, .field textarea::placeholder { color: var(--text-xs); }
+.field input:focus, .field select:focus, .field textarea:focus {
   border-color: var(--green);
   box-shadow: 0 0 0 3px rgba(22,163,74,.10);
   background: #fff;
 }
+.field input:disabled { background: var(--bg-alt); color: var(--text-muted); cursor: not-allowed; }
 .field select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -563,17 +493,8 @@ body {
   cursor: pointer;
 }
 .field textarea { resize: vertical; min-height: 88px; }
-.field-hint {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 5px;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
+.field-hint { font-size: 12px; color: var(--text-muted); margin-top: 5px; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
 /* ── Buttons ── */
 .btn {
@@ -585,70 +506,40 @@ body {
   border-radius: var(--r-sm);
   border: none;
   font-family: 'DM Sans', sans-serif;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 14px; font-weight: 600;
   cursor: pointer;
   text-decoration: none;
   transition: all .15s ease;
   white-space: nowrap;
   line-height: 1;
+  user-select: none;
 }
 .btn:hover { transform: translateY(-1px); }
-.btn:active { transform: translateY(0); }
+.btn:active:not(:disabled) { transform: scale(.97) translateY(0); opacity: .9; }
 .btn:disabled { opacity: .55; cursor: not-allowed; transform: none; }
 
-.btn-primary {
-  background: var(--green);
-  color: #fff;
-  box-shadow: 0 1px 3px rgba(22,163,74,.3);
-}
+.btn-primary { background: var(--green); color: #fff; box-shadow: 0 1px 3px rgba(22,163,74,.3); }
 .btn-primary:hover { background: #15803d; box-shadow: 0 4px 12px rgba(22,163,74,.35); }
 
-.btn-secondary {
-  background: var(--card);
-  color: var(--text);
-  border: 1px solid var(--border);
-}
+.btn-secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
 .btn-secondary:hover { background: var(--bg-alt); border-color: var(--border-mid); }
 
-.btn-ghost {
-  background: transparent;
-  color: var(--text-muted);
-  border: none;
-}
+.btn-ghost { background: transparent; color: var(--text-muted); border: none; }
 .btn-ghost:hover { background: var(--bg-alt); color: var(--text); }
 
-.btn-danger {
-  background: #fef2f2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
-}
+.btn-danger { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
 .btn-danger:hover { background: #fee2e2; }
 
-.btn-done {
-  background: var(--green-light);
-  color: var(--green-dark);
-  border: 1px solid var(--green-mid);
-}
+.btn-done { background: var(--green-light); color: var(--green-dark); border: 1px solid var(--green-mid); }
 .btn-done:hover { background: var(--green-mid); }
 
-.btn-mark {
-  background: var(--card);
-  color: var(--text-muted);
-  border: 1px solid var(--border);
-}
+.btn-mark { background: var(--card); color: var(--text-muted); border: 1px solid var(--border); }
 .btn-mark:hover { border-color: var(--green); color: var(--green); background: var(--green-light); }
 
 .btn-full { width: 100%; }
 .btn-lg { padding: 13px 28px; font-size: 15px; }
 .btn-sm { padding: 7px 14px; font-size: 13px; }
 .btn-xs { padding: 5px 10px; font-size: 12px; }
-
-.btn-icon {
-  width: 32px; height: 32px;
-  padding: 0;
-  border-radius: 6px;
-}
 
 /* ── Alerts ── */
 .alert {
@@ -662,20 +553,24 @@ body {
   border: 1px solid;
 }
 .alert-success { background: var(--green-light); color: var(--green-dark); border-color: var(--green-mid); }
-.alert-error   { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+.alert-error   { background: #fef2f2; color: #dc2626; border-color: #fecaca; border-left: 3px solid #dc2626; }
 .alert-info    { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
 .alert-warn    { background: #fffbeb; color: #92400e; border-color: #fde68a; }
-
-/* ── Dashboard Table ── */
-.systems-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
+.error-retry {
+  margin-left: auto;
+  font-size: 12px; font-weight: 600;
+  color: #dc2626;
+  cursor: pointer;
+  text-decoration: underline;
+  background: none; border: none; padding: 0;
+  flex-shrink: 0;
 }
+
+/* ── Dashboard table ── */
+.systems-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .systems-table th {
   text-align: left;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 11px; font-weight: 600;
   letter-spacing: .8px;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -689,33 +584,26 @@ body {
   vertical-align: middle;
 }
 .systems-table tr:last-child td { border-bottom: none; }
-.systems-table tbody tr {
-  transition: background .12s;
-}
+.systems-table tbody tr { transition: background .12s; }
 .systems-table tbody tr:hover td { background: var(--bg); }
+.systems-table tbody tr:hover td:first-child { box-shadow: inset 3px 0 0 var(--green); }
 
-.goal-cell {
-  font-weight: 500;
-  color: var(--text);
-  max-width: 200px;
-}
+.goal-cell { font-weight: 500; color: var(--text); max-width: 200px; }
 .meta-cell { color: var(--text-muted); font-size: 13px; }
 .date-cell { color: var(--text-muted); font-size: 13px; white-space: nowrap; }
 
-/* ── Streak Badge ── */
+/* ── Streak pill ── */
 .streak-pill {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 3px 9px;
   border-radius: 100px;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 12px; font-weight: 600;
   background: #fff7ed;
   color: #c2410c;
   border: 1px solid #fed7aa;
   white-space: nowrap;
-  min-width: 20px;
 }
 .streak-pill.empty {
   background: var(--bg-alt);
@@ -723,31 +611,12 @@ body {
   border-color: var(--border);
   font-weight: 400;
 }
-.streak-broken {
-  display: block;
-  font-size: 11px;
-  color: #dc2626;
-  margin-top: 3px;
-}
 
-/* ── Today Cell ── */
-.today-cell {
-  white-space: nowrap;
-}
-.today-cell-inner {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
+.today-cell { white-space: nowrap; }
+.today-cell-inner { display: flex; flex-direction: column; gap: 4px; }
+.action-group { display: flex; gap: 6px; align-items: center; }
 
-/* ── Action Buttons ── */
-.action-group {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-/* ── Result Output ── */
+/* ── Result card ── */
 .result-card {
   background: var(--card);
   border: 1px solid var(--border);
@@ -765,8 +634,7 @@ body {
   justify-content: space-between;
 }
 .result-header-label {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 12px; font-weight: 600;
   letter-spacing: .8px;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -777,6 +645,7 @@ body {
   line-height: 1.85;
   white-space: pre-wrap;
   color: var(--text);
+  font-family: 'DM Sans', sans-serif;
 }
 .result-footer {
   padding: 16px 24px;
@@ -788,60 +657,99 @@ body {
   flex-wrap: wrap;
 }
 
-/* ── Auth Pages ── */
-.auth-page {
+/* ── Auth pages — split layout ── */
+.auth-split {
   min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
   background: var(--bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
 }
+.auth-left {
+  background: linear-gradient(160deg, #14532d 0%, #16a34a 100%);
+  color: #fff;
+  padding: 64px 56px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+}
+.auth-left::before {
+  content: "";
+  position: absolute;
+  top: -100px; right: -100px;
+  width: 360px; height: 360px;
+  background: radial-gradient(circle, rgba(255,255,255,.08) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.auth-left::after {
+  content: "";
+  position: absolute;
+  bottom: -120px; left: -80px;
+  width: 320px; height: 320px;
+  background: radial-gradient(circle, rgba(255,255,255,.05) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.auth-brand {
+  display: flex; align-items: center; gap: 12px;
+  font-family: 'DM Serif Display', serif;
+  font-size: 22px;
+  position: relative;
+}
+.auth-brand-mark {
+  width: 38px; height: 38px;
+  background: #fff;
+  color: var(--green-dark);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 18px;
+}
+.auth-headline { position: relative; }
+.auth-headline h1 {
+  font-family: 'DM Serif Display', serif;
+  font-size: 40px; font-weight: 400;
+  line-height: 1.15; letter-spacing: -.5px;
+  margin-bottom: 16px;
+}
+.auth-headline p {
+  font-size: 16px; line-height: 1.6;
+  opacity: .9; max-width: 420px;
+}
+.auth-features {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 32px;
+}
+.auth-feature {
+  display: flex; align-items: flex-start; gap: 12px;
+  font-size: 14px;
+  opacity: .95;
+}
+.auth-feature-dot {
+  width: 22px; height: 22px;
+  background: rgba(255,255,255,.18);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.auth-footer-note { position: relative; font-size: 12px; opacity: .7; }
+.auth-right { display: flex; align-items: center; justify-content: center; padding: 40px 32px; }
 .auth-panel {
   background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--r-xl);
-  padding: 44px 40px;
   width: 100%;
-  max-width: 420px;
-  box-shadow: var(--shadow-lg);
-}
-.auth-logo {
-  text-align: center;
-  margin-bottom: 32px;
-}
-.auth-logo-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px; height: 48px;
-  background: var(--green);
-  border-radius: 14px;
-  color: white;
-  font-size: 22px;
-  font-weight: 700;
-  margin-bottom: 12px;
+  max-width: 380px;
 }
 .auth-panel h2 {
   font-family: 'DM Serif Display', serif;
-  font-size: 26px;
-  font-weight: 400;
-  text-align: center;
+  font-size: 26px; font-weight: 400;
   color: var(--text);
   margin-bottom: 6px;
 }
-.auth-panel .subtitle {
-  font-size: 14px;
-  color: var(--text-muted);
-  text-align: center;
-  margin-bottom: 28px;
-}
-.auth-divider {
-  text-align: center;
-  margin: 20px 0;
-  font-size: 13px;
-  color: var(--text-muted);
-}
+.auth-sub { font-size: 14px; color: var(--text-muted); margin-bottom: 22px; }
 .auth-switch {
   text-align: center;
   margin-top: 20px;
@@ -851,6 +759,36 @@ body {
 .auth-switch a { color: var(--green); text-decoration: none; font-weight: 600; }
 .auth-switch a:hover { text-decoration: underline; }
 
+/* Standalone (onboarding) auth panel */
+.auth-page {
+  min-height: 100vh;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.auth-page .auth-panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 44px 40px;
+  max-width: 440px;
+  box-shadow: var(--shadow-lg);
+}
+.auth-logo { text-align: center; margin-bottom: 24px; }
+.auth-logo-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px; height: 48px;
+  background: var(--green);
+  border-radius: 14px;
+  color: white;
+  font-size: 22px; font-weight: 700;
+  box-shadow: 0 4px 14px rgba(22,163,74,.3);
+}
+
 /* ── Feedback ── */
 .feedback-card {
   background: var(--card);
@@ -858,17 +796,14 @@ body {
   border-radius: var(--r-md);
   padding: 18px 20px;
   margin-bottom: 12px;
-  transition: box-shadow .15s;
+  transition: box-shadow .18s ease, transform .18s ease;
 }
-.feedback-card:hover { box-shadow: var(--shadow-sm); }
+.feedback-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
 .feedback-author {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 13px; font-weight: 600;
   color: var(--text);
   margin-bottom: 4px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: flex; align-items: center; gap: 8px;
 }
 .feedback-author-dot {
   width: 6px; height: 6px;
@@ -887,218 +822,7 @@ body {
   color: var(--text-muted);
 }
 
-/* ── Empty States ── */
-.empty-state {
-  text-align: center;
-  padding: 60px 20px;
-}
-.empty-icon {
-  font-size: 40px;
-  margin-bottom: 12px;
-  opacity: .5;
-}
-.empty-state h3 {
-  font-family: 'DM Serif Display', serif;
-  font-size: 20px;
-  font-weight: 400;
-  margin-bottom: 8px;
-  color: var(--text);
-}
-.empty-state p {
-  font-size: 14px;
-  color: var(--text-muted);
-  max-width: 300px;
-  margin: 0 auto 20px;
-}
-
-/* ── Stats Row ── */
-.stats-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
-}
-.stat-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  padding: 18px 20px;
-  box-shadow: var(--shadow-sm);
-}
-.stat-label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .8px;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-}
-.stat-value {
-  font-family: 'DM Serif Display', serif;
-  font-size: 28px;
-  color: var(--text);
-  line-height: 1;
-}
-.stat-sub {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 4px;
-}
-
-/* ── Chips / Tags ── */
-.chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 12px;
-  border-radius: 100px;
-  font-size: 12px;
-  font-weight: 500;
-  border: 1px solid var(--border);
-  background: var(--card);
-  color: var(--text-muted);
-}
-
-/* ── Utility ── */
-.text-muted { color: var(--text-muted); }
-.text-xs    { font-size: 12px; }
-.text-sm    { font-size: 13px; }
-.mt-4  { margin-top: 4px; }
-.mt-8  { margin-top: 8px; }
-.mt-16 { margin-top: 16px; }
-.mt-24 { margin-top: 24px; }
-.mb-4  { margin-bottom: 4px; }
-.mb-8  { margin-bottom: 8px; }
-.mb-16 { margin-bottom: 16px; }
-.mb-24 { margin-bottom: 24px; }
-.flex  { display: flex; }
-.items-center { align-items: center; }
-.gap-8  { gap: 8px; }
-.gap-12 { gap: 12px; }
-
-/* ── Mobile overlay ── */
-.sidebar-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.3);
-  z-index: 99;
-}
-
-/* ── Responsive ── */
-@media (max-width: 768px) {
-  .sidebar {
-    transform: translateX(-100%);
-  }
-  .sidebar.open {
-    transform: translateX(0);
-    box-shadow: var(--shadow-lg);
-  }
-  .sidebar-overlay.open { display: block; }
-  .main { margin-left: 0; }
-  .menu-toggle { display: flex; align-items: center; }
-  .content { padding: 20px 16px; }
-  .form-grid { grid-template-columns: 1fr; }
-  .stats-row { grid-template-columns: 1fr; }
-  .topbar { padding: 0 16px; }
-  .systems-table th:nth-child(2),
-  .systems-table td:nth-child(2) { display: none; }
-}
-
-/* ── Loading state ── */
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-.btn-loading {
-  position: relative;
-  color: transparent !important;
-  pointer-events: none;
-}
-.btn-loading::after {
-  content: "";
-  position: absolute;
-  width: 16px; height: 16px;
-  top: 50%; left: 50%;
-  margin: -8px 0 0 -8px;
-  border: 2px solid rgba(255,255,255,.35);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin .65s linear infinite;
-}
-.btn-primary.btn-loading::after {
-  border-color: rgba(255,255,255,.3);
-  border-top-color: #fff;
-}
-.btn-secondary.btn-loading::after {
-  border-color: rgba(15,23,42,.15);
-  border-top-color: var(--text);
-}
-
-/* ── Micro-interactions ── */
-.btn {
-  /* already has transition — extend it */
-  transition: all .15s ease;
-  user-select: none;
-}
-.btn:active:not(:disabled) {
-  transform: scale(.97) translateY(0) !important;
-  opacity: .9;
-}
-.btn-primary:active:not(:disabled) {
-  box-shadow: 0 1px 3px rgba(22,163,74,.2) !important;
-}
-/* Inputs — smooth focus ring */
-.field input, .field select, .field textarea {
-  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
-}
-/* Card hover lift */
-.feedback-card {
-  transition: box-shadow .18s ease, transform .18s ease;
-}
-.feedback-card:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-/* Table row transition already set — add subtle left accent on active */
-.systems-table tbody tr:hover td:first-child {
-  box-shadow: inset 3px 0 0 var(--green);
-}
-
-/* ── First-time welcome banner ── */
-.welcome-banner {
-  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
-  border: 1px solid var(--green-mid);
-  border-radius: var(--r-lg);
-  padding: 24px 28px;
-  margin-bottom: 24px;
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-}
-.welcome-banner-icon {
-  font-size: 28px;
-  flex-shrink: 0;
-  line-height: 1;
-  margin-top: 2px;
-}
-.welcome-banner h3 {
-  font-family: 'DM Serif Display', serif;
-  font-size: 18px;
-  font-weight: 400;
-  color: var(--green-dark);
-  margin-bottom: 4px;
-}
-.welcome-banner p {
-  font-size: 13.5px;
-  color: #166534;
-  line-height: 1.5;
-  margin-bottom: 12px;
-}
-.welcome-banner .btn-primary {
-  font-size: 13px;
-  padding: 8px 18px;
-}
-
-/* ── Enhanced empty state ── */
+/* ── Empty states ── */
 .empty-state {
   text-align: center;
   padding: 72px 24px 60px;
@@ -1116,31 +840,201 @@ body {
   font-size: 14px; color: var(--text-muted);
   max-width: 320px; margin: 0 auto 8px; line-height: 1.6;
 }
-.empty-hint {
-  font-size: 12px;
-  color: var(--text-xs);
+.empty-hint { font-size: 12px; color: var(--text-xs); margin-bottom: 24px; font-style: italic; }
+
+/* ── Stats row ── */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
   margin-bottom: 24px;
-  font-style: italic;
+}
+.stat-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-sm);
+}
+.stat-label {
+  font-size: 11px; font-weight: 600;
+  letter-spacing: .8px; text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.stat-value {
+  font-family: 'DM Serif Display', serif;
+  font-size: 28px;
+  color: var(--text);
+  line-height: 1;
+}
+.stat-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+/* ── Chips ── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 100px;
+  font-size: 12px; font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text-muted);
 }
 
-/* ── Error alert — enhanced ── */
-.alert-error {
-  background: #fef2f2;
-  color: #dc2626;
-  border-color: #fecaca;
-  border-left: 3px solid #dc2626;
+/* ── Welcome banner ── */
+.welcome-banner {
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border: 1px solid var(--green-mid);
+  border-radius: var(--r-lg);
+  padding: 24px 28px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
 }
-.error-retry {
-  margin-left: auto;
-  font-size: 12px;
+.welcome-banner-icon { font-size: 28px; flex-shrink: 0; line-height: 1; margin-top: 2px; }
+.welcome-banner h3 {
+  font-family: 'DM Serif Display', serif;
+  font-size: 18px; font-weight: 400;
+  color: var(--green-dark); margin-bottom: 4px;
+}
+.welcome-banner p {
+  font-size: 13.5px; color: #166534;
+  line-height: 1.5; margin-bottom: 12px;
+}
+.welcome-banner .btn-primary { font-size: 13px; padding: 8px 18px; }
+
+/* ── Progress page — week dots ── */
+.week-strip {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: center;
+  padding: 16px;
+  background: var(--bg);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  margin-top: 12px;
+}
+.week-strip-info { font-size: 13px; color: var(--text-muted); }
+.week-strip-info strong { color: var(--text); font-size: 14px; }
+.week-dots { display: flex; gap: 8px; }
+.week-dot {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700;
+  background: var(--bg-alt);
+  color: var(--text-xs);
+  border: 1px solid var(--border);
+  transition: all .2s ease;
+}
+.week-dot.done {
+  background: var(--green);
+  color: #fff;
+  border-color: var(--green);
+  box-shadow: 0 2px 6px rgba(22,163,74,.35);
+}
+.week-dot.today { outline: 2px solid var(--green); outline-offset: 2px; }
+
+.progress-system-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 22px 24px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
+  transition: all .15s ease;
+}
+.progress-system-card:hover { box-shadow: var(--shadow-md); }
+.progress-system-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.progress-system-title {
+  font-size: 16px;
   font-weight: 600;
-  color: #dc2626;
-  cursor: pointer;
-  text-decoration: underline;
-  background: none;
-  border: none;
-  padding: 0;
-  flex-shrink: 0;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.progress-system-sub { font-size: 12px; color: var(--text-muted); }
+.progress-bar-track {
+  height: 6px;
+  background: var(--bg-alt);
+  border-radius: 100px;
+  overflow: hidden;
+  margin-top: 14px;
+}
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--green) 0%, #22c55e 100%);
+  border-radius: 100px;
+  transition: width .5s ease;
+}
+
+/* ── Settings danger card ── */
+.danger-card { border-color: #fecaca !important; }
+.danger-card .card-header { border-bottom-color: #fecaca !important; }
+.danger-card .card-title { color: #dc2626 !important; }
+
+/* ── Mobile overlay ── */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.3);
+  z-index: 99;
+}
+
+/* ── Loading ── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.btn-loading { position: relative; color: transparent !important; pointer-events: none; }
+.btn-loading::after {
+  content: "";
+  position: absolute;
+  width: 16px; height: 16px;
+  top: 50%; left: 50%;
+  margin: -8px 0 0 -8px;
+  border: 2px solid rgba(255,255,255,.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .65s linear infinite;
+}
+
+/* ── Utility ── */
+.text-muted { color: var(--text-muted); }
+.text-sm { font-size: 13px; }
+.mt-16 { margin-top: 16px; }
+.mb-16 { margin-bottom: 16px; }
+.flex { display: flex; }
+.items-center { align-items: center; }
+.gap-8 { gap: 8px; }
+.gap-12 { gap: 12px; }
+
+/* ── Responsive ── */
+@media (max-width: 880px) {
+  .auth-split { grid-template-columns: 1fr; }
+  .auth-left { padding: 40px 28px; min-height: auto; }
+  .auth-headline h1 { font-size: 28px; }
+  .auth-features { display: none; }
+}
+@media (max-width: 768px) {
+  .sidebar { transform: translateX(-100%); }
+  .sidebar.open { transform: translateX(0); box-shadow: var(--shadow-lg); }
+  .sidebar-overlay.open { display: block; }
+  .main { margin-left: 0; }
+  .menu-toggle { display: flex; align-items: center; }
+  .content { padding: 20px 16px; }
+  .form-grid { grid-template-columns: 1fr; }
+  .stats-row { grid-template-columns: 1fr; }
+  .topbar { padding: 0 16px; }
+  .systems-table th:nth-child(2),
+  .systems-table td:nth-child(2) { display: none; }
+  .week-strip { grid-template-columns: 1fr; }
 }
 """
 
@@ -1151,7 +1045,6 @@ body {
 def page(title, body, active="home"):
     username = session.get("username")
 
-    # Build sidebar nav — only shown when logged in
     if username:
         def nav(href, icon_svg, label, key):
             cls = "nav-item active" if active == key else "nav-item"
@@ -1176,9 +1069,11 @@ def page(title, body, active="home"):
     <div class="nav-section-label">Workspace</div>
     {nav("/", '<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>', "System Builder", "home")}
     {nav("/dashboard", '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>', "My Systems", "dashboard")}
+    {nav("/progress", '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>', "Progress", "progress")}
 
-    <div class="nav-section-label" style="margin-top:16px;">Community</div>
+    <div class="nav-section-label" style="margin-top:16px;">Account</div>
     {nav("/feedback", '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>', "Feedback", "feedback")}
+    {nav("/settings", '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>', "Settings", "settings")}
   </nav>
 
   <div class="sidebar-footer">
@@ -1220,7 +1115,6 @@ def page(title, body, active="home"):
         main_close   = '</div>'
 
     else:
-        # Unauthenticated — full-page centered layout (auth pages)
         sidebar_html = ""
         topbar_html  = ""
         layout_open  = ''
@@ -1261,6 +1155,47 @@ function closeSidebar() {
 </body>
 </html>"""
 
+
+# =======================================================
+#  Auth helpers — split panel
+# =======================================================
+def _auth_left_panel():
+    return """
+    <div class="auth-left">
+      <div class="auth-brand">
+        <div class="auth-brand-mark">C</div>
+        <span>Consc</span>
+      </div>
+
+      <div class="auth-headline">
+        <h1>You already know what to do.<br>You just don't do it.</h1>
+        <p>Consc turns self-help knowledge into daily execution systems &mdash;
+           so you finally break the habit loop instead of reading about it.</p>
+
+        <div class="auth-features">
+          <div class="auth-feature">
+            <div class="auth-feature-dot">&#10003;</div>
+            <div><strong>Break bad habits</strong><br>
+              <span style="opacity:.75;">Identify your trigger, replace the loop.</span></div>
+          </div>
+          <div class="auth-feature">
+            <div class="auth-feature-dot">&#10003;</div>
+            <div><strong>Beat procrastination</strong><br>
+              <span style="opacity:.75;">Get a concrete daily plan, not vague advice.</span></div>
+          </div>
+          <div class="auth-feature">
+            <div class="auth-feature-dot">&#10003;</div>
+            <div><strong>Track streaks</strong><br>
+              <span style="opacity:.75;">Show up daily. Watch the streak grow.</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="auth-footer-note">&copy; Consc &mdash; Behavior OS for people who keep restarting.</div>
+    </div>
+    """
+
+
 # =======================================================
 #  SIGNUP
 # =======================================================
@@ -1296,32 +1231,32 @@ def signup():
     err_html = f'<div class="alert alert-error">{error}</div>' if error else ""
 
     body = f"""
-<div class="auth-page">
-  <div class="auth-panel">
-    <div class="auth-logo">
-      <div class="auth-logo-mark">C</div>
+<div class="auth-split">
+  {_auth_left_panel()}
+  <div class="auth-right">
+    <div class="auth-panel">
       <h2>Create your account</h2>
-      <p class="subtitle">Start correcting your behavior, not just tracking it.</p>
+      <p class="auth-sub">Start correcting your behavior, not just tracking it.</p>
+      {err_html}
+      <form method="POST">
+        <div class="field">
+          <label>Username</label>
+          <input name="username" placeholder="e.g. alex123" required>
+        </div>
+        <div class="field">
+          <label>Email</label>
+          <input name="email" type="email" placeholder="you@email.com" required>
+        </div>
+        <div class="field">
+          <label>Password <span>(min 6 characters)</span></label>
+          <input name="password" type="password" placeholder="Choose a password" required>
+        </div>
+        <button class="btn btn-primary btn-full btn-lg" style="margin-top:6px;">
+          Get Started
+        </button>
+      </form>
+      <p class="auth-switch">Already have an account? <a href="/login">Sign in &rarr;</a></p>
     </div>
-    {err_html}
-    <form method="POST">
-      <div class="field">
-        <label>Username</label>
-        <input name="username" placeholder="e.g. alex123" required>
-      </div>
-      <div class="field">
-        <label>Email</label>
-        <input name="email" type="email" placeholder="you@email.com" required>
-      </div>
-      <div class="field">
-        <label>Password <span>(min 6 characters)</span></label>
-        <input name="password" type="password" placeholder="Choose a password" required>
-      </div>
-      <button class="btn btn-primary btn-full btn-lg" style="margin-top:6px;">
-        Get Started
-      </button>
-    </form>
-    <p class="auth-switch">Already have an account? <a href="/login">Sign in &rarr;</a></p>
   </div>
 </div>
 """
@@ -1355,28 +1290,28 @@ def login():
     err_html = f'<div class="alert alert-error">{error}</div>' if error else ""
 
     body = f"""
-<div class="auth-page">
-  <div class="auth-panel">
-    <div class="auth-logo">
-      <div class="auth-logo-mark">C</div>
+<div class="auth-split">
+  {_auth_left_panel()}
+  <div class="auth-right">
+    <div class="auth-panel">
       <h2>Welcome back</h2>
-      <p class="subtitle">Your systems are waiting.</p>
+      <p class="auth-sub">Your systems are waiting.</p>
+      {err_html}
+      <form method="POST">
+        <div class="field">
+          <label>Email</label>
+          <input name="email" type="email" placeholder="you@email.com" required>
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input name="password" type="password" placeholder="Your password" required>
+        </div>
+        <button class="btn btn-primary btn-full btn-lg" style="margin-top:6px;">
+          Sign in
+        </button>
+      </form>
+      <p class="auth-switch">No account yet? <a href="/signup">Create one free &rarr;</a></p>
     </div>
-    {err_html}
-    <form method="POST">
-      <div class="field">
-        <label>Email</label>
-        <input name="email" type="email" placeholder="you@email.com" required>
-      </div>
-      <div class="field">
-        <label>Password</label>
-        <input name="password" type="password" placeholder="Your password" required>
-      </div>
-      <button class="btn btn-primary btn-full btn-lg" style="margin-top:6px;">
-        Sign in
-      </button>
-    </form>
-    <p class="auth-switch">No account yet? <a href="/signup">Create one free &rarr;</a></p>
   </div>
 </div>
 """
@@ -1393,11 +1328,116 @@ def logout():
 
 
 # =======================================================
+#  ONBOARDING   /onboarding
+# =======================================================
+@app.route("/onboarding", methods=["GET", "POST"])
+@login_required
+def onboarding():
+    try:
+        step = int(request.values.get("step", 1))
+    except ValueError:
+        step = 1
+    if step < 1 or step > 3:
+        step = 1
+
+    if request.method == "POST":
+        if step == 1:
+            session["onb_struggle"] = request.form.get("struggle", "").strip()
+            return redirect(url_for("onboarding", step=2))
+        if step == 2:
+            session["onb_trigger"] = request.form.get("trigger", "").strip()
+            return redirect(url_for("onboarding", step=3))
+        if step == 3:
+            session["onb_procrastinate"] = request.form.get("procrastinate", "").strip()
+            session["onb_done"] = True
+            return redirect(url_for("index"))
+
+    progress = int((step / 3) * 100)
+
+    if step == 1:
+        form_html = """
+        <h2 style="text-align:center; font-family:'DM Serif Display',serif; font-size:24px; margin-bottom:6px;">What habit are you trying to quit?</h2>
+        <p class="auth-sub" style="text-align:center;">Be specific. Vague goals fail.</p>
+        <form method="POST">
+          <input type="hidden" name="step" value="1">
+          <div class="field">
+            <input name="struggle" placeholder="e.g. Scrolling Instagram until 2am" required autofocus>
+          </div>
+          <button class="btn btn-primary btn-full btn-lg">Next &rarr;</button>
+        </form>
+        """
+    elif step == 2:
+        form_html = """
+        <h2 style="text-align:center; font-family:'DM Serif Display',serif; font-size:24px; margin-bottom:6px;">When or where do you fail?</h2>
+        <p class="auth-sub" style="text-align:center;">Most failure happens at predictable moments.</p>
+        <form method="POST">
+          <input type="hidden" name="step" value="2">
+          <div class="field">
+            <input name="trigger" placeholder="e.g. After dinner, lying in bed" required autofocus>
+          </div>
+          <button class="btn btn-primary btn-full btn-lg">Next &rarr;</button>
+        </form>
+        """
+    else:
+        form_html = """
+        <h2 style="text-align:center; font-family:'DM Serif Display',serif; font-size:24px; margin-bottom:6px;">What are you procrastinating on?</h2>
+        <p class="auth-sub" style="text-align:center;">The thing you keep avoiding but know matters.</p>
+        <form method="POST">
+          <input type="hidden" name="step" value="3">
+          <div class="field">
+            <input name="procrastinate" placeholder="e.g. Starting my gym routine" required autofocus>
+          </div>
+          <button class="btn btn-primary btn-full btn-lg">Build my system &rarr;</button>
+        </form>
+        <p class="auth-sub" style="margin-top:18px; font-style:italic; text-align:center;">
+          "You don't fail because of motivation. You fail because you don't have a system."
+        </p>
+        """
+
+    body = f"""
+<div class="auth-page">
+  <div class="auth-panel">
+    <div class="auth-logo">
+      <div class="auth-logo-mark">C</div>
+    </div>
+    <div style="height:6px; background:var(--bg-alt); border-radius:100px; margin-bottom:18px; overflow:hidden;">
+      <div style="height:100%; width:{progress}%; background:var(--green); transition:width .4s ease;"></div>
+    </div>
+    <div style="text-align:center; font-size:11px; color:var(--text-muted); margin-bottom:22px; letter-spacing:1px; font-weight:600;">
+      STEP {step} OF 3
+    </div>
+    {form_html}
+  </div>
+</div>
+"""
+    return page("Get Started", body)
+
+
+# =======================================================
 #  GENERATOR   /
 # =======================================================
 @app.route("/", methods=["GET", "POST"])
 @login_required
 def index():
+    user_id = session["user_id"]
+
+    # First-time user → onboarding
+    conn = get_db()
+    has_systems = conn.execute(
+        "SELECT 1 FROM systems WHERE user_id = ? LIMIT 1", (user_id,)
+    ).fetchone()
+    conn.close()
+    if not has_systems and not session.get("onb_done"):
+        return redirect(url_for("onboarding"))
+
+    # Onboarding prefill (consume on GET only)
+    if request.method == "GET":
+        onb_struggle      = session.pop("onb_struggle",      "")
+        onb_trigger       = session.pop("onb_trigger",       "")
+        onb_procrastinate = session.pop("onb_procrastinate", "")
+    else:
+        onb_struggle = onb_trigger = onb_procrastinate = ""
+
     result   = None
     error    = None
     saved_id = None
@@ -1422,16 +1462,17 @@ User profile:
 - Biggest struggle: {struggle}
 - Constraints: {custom if custom else 'None'}
 
-Respond with exactly these 6 sections. Be specific, not generic:
+Respond with exactly these 6 sections. Be specific, not generic.
+Use plain text only — no markdown symbols, no asterisks, no hashtags.
 
 1. Identity Shift
-   The new identity this person must adopt. One clear statement + 2-3 supporting beliefs.
+   The new identity this person must adopt. One clear statement plus 2-3 supporting beliefs.
 
 2. Daily Plan ({daily_time}-minute version)
    A concrete step-by-step routine that fits in {daily_time} minutes per day.
 
 3. Weekly Plan
-   Mon-Sun: one concrete action per day, building the habit progressively.
+   Mon to Sun: one concrete action per day, building the habit progressively.
 
 4. Habit Triggers
    3 specific "when X, then Y" trigger-action pairs to make the habit automatic.
@@ -1449,7 +1490,7 @@ Respond with exactly these 6 sections. Be specific, not generic:
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=1400,
             )
-            result = response.choices[0].message.content
+            result = clean_ai_output(response.choices[0].message.content)
 
             conn = get_db()
             try:
@@ -1463,15 +1504,15 @@ Respond with exactly these 6 sections. Be specific, not generic:
                 conn.close()
 
         except Exception as e:
-            error = f"AI error: {str(e)}"
+            error = str(e)
 
     result_html = ""
     if error:
-        # Clean up the raw OpenAI error string for display
-        user_msg = str(error)
-        if "auth" in user_msg.lower() or "api" in user_msg.lower():
+        user_msg = error
+        low = user_msg.lower()
+        if "auth" in low or "api" in low or "key" in low:
             user_msg = "API key error. Check your OPENAI_API_KEY environment variable."
-        elif "timeout" in user_msg.lower() or "connect" in user_msg.lower():
+        elif "timeout" in low or "connect" in low:
             user_msg = "Connection timed out. Please try again."
         elif len(user_msg) > 120:
             user_msg = "Something went wrong. Please try again in a moment."
@@ -1495,18 +1536,16 @@ Respond with exactly these 6 sections. Be specific, not generic:
   <div class="result-header">
     <span class="result-header-label">&#10024; Your System is Ready</span>
     <div class="flex gap-8">
-      <a href="/dashboard" class="btn btn-secondary btn-sm">&#128203; Dashboard</a>
+      <a href="/dashboard" class="btn btn-secondary btn-sm">Dashboard</a>
       <form method="POST" action="/pdf_by_id" style="margin:0;">
         <input type="hidden" name="system_id" value="{saved_id}">
-        <button class="btn btn-secondary btn-sm">&#128196; PDF</button>
+        <button class="btn btn-secondary btn-sm">Download PDF</button>
       </form>
     </div>
   </div>
   <div class="result-body">{escaped}</div>
   <div class="result-footer">
-    <a href="/dashboard" class="btn btn-primary">
-      &#128293; Start Day 1
-    </a>
+    <a href="/dashboard" class="btn btn-primary">Start Day 1 &rarr;</a>
     <span class="text-sm text-muted">Automatically saved to your systems.</span>
   </div>
 </div>
@@ -1514,8 +1553,8 @@ Respond with exactly these 6 sections. Be specific, not generic:
 
     body = f"""
 <div class="page-header">
-  <h1>Build your system</h1>
-  <p>Be specific. The more honest you are, the more precise the output.</p>
+  <h1>Build your execution system</h1>
+  <p>Be specific. The more honest you are, the more precise the output. <em>This is not motivation &mdash; this is a system.</em></p>
 </div>
 
 <div class="card">
@@ -1538,22 +1577,22 @@ Respond with exactly these 6 sections. Be specific, not generic:
     <div class="form-grid">
       <div class="field">
         <label>What habit are you trying to quit?</label>
-        <input name="struggle" placeholder="e.g. Scrolling until 2am" required>
+        <input name="struggle" value="{onb_struggle}" placeholder="e.g. Scrolling until 2am" required>
       </div>
       <div class="field">
         <label>When do you fail? <span>(trigger or time)</span></label>
-        <input name="why" placeholder="e.g. After dinner, when I'm tired" required>
+        <input name="why" value="{onb_trigger}" placeholder="e.g. After dinner, when I'm tired" required>
       </div>
     </div>
 
     <div class="form-grid">
       <div class="field">
         <label>What are you procrastinating on?</label>
-        <input name="custom" placeholder="e.g. Starting the gym routine">
+        <input name="custom" value="{onb_procrastinate}" placeholder="e.g. Starting the gym routine">
       </div>
       <div class="field">
         <label>Your motivation</label>
-        <input name="why" placeholder="e.g. I want more energy and discipline" required>
+        <input name="motivation" placeholder="e.g. I want more energy and discipline">
       </div>
     </div>
 
@@ -1572,8 +1611,8 @@ Respond with exactly these 6 sections. Be specific, not generic:
       </div>
     </div>
 
-    <button id="gen-btn" class="btn btn-primary btn-lg" style="margin-top:4px; min-width:200px;">
-      Generate My System &#8594;
+    <button id="gen-btn" class="btn btn-primary btn-lg" style="margin-top:4px; min-width:240px;">
+      Build My Execution System &rarr;
     </button>
   </form>
 </div>
@@ -1587,13 +1626,10 @@ Respond with exactly these 6 sections. Be specific, not generic:
   if (!form || !btn) return;
 
   form.addEventListener('submit', function() {{
-    // Slight delay so the browser's native validation runs first
     setTimeout(function() {{
       if (!form.checkValidity || form.checkValidity()) {{
         btn.classList.add('btn-loading');
         btn.disabled = true;
-        btn.dataset.orig = btn.textContent;
-        // Fallback: re-enable after 30s in case something goes wrong
         setTimeout(function() {{
           btn.classList.remove('btn-loading');
           btn.disabled = false;
@@ -1624,7 +1660,7 @@ def dashboard():
     ).fetchall()
     conn.close()
 
-    is_first_visit = not rows  # used for welcome banner below
+    is_first_visit = not rows
 
     if not rows:
         table_html = """
@@ -1636,7 +1672,6 @@ def dashboard():
   <a href="/" class="btn btn-primary btn-lg">Create your first system &rarr;</a>
 </div>"""
     else:
-        # Count stats
         total = len(rows)
         completed_today = sum(1 for row in rows if get_today_completion(user_id, row["id"]))
         best_streak = max((get_streak(user_id, row["id"]) for row in rows), default=0)
@@ -1656,14 +1691,16 @@ def dashboard():
             streak = get_streak(user_id, row["id"])
 
             if done:
-                btn_html = f'''<button class="btn btn-done btn-sm today-btn" data-id="{row['id']}" title="Click to undo" onclick="toggleToday(this, {row['id']})">&#10003; Completed</button>'''
+                btn_html = f'<button class="btn btn-done btn-sm today-btn" data-id="{row["id"]}" title="Click to undo" onclick="toggleToday(this, {row["id"]})">&#10003; Completed</button>'
             else:
-                btn_html = f'''<button class="btn btn-mark btn-sm today-btn" data-id="{row['id']}" title="Mark as done for today" onclick="toggleToday(this, {row['id']})">Mark done</button>'''
+                btn_html = f'<button class="btn btn-mark btn-sm today-btn" data-id="{row["id"]}" title="Mark as done for today" onclick="toggleToday(this, {row["id"]})">Mark done</button>'
 
-            if streak > 0:
-                streak_html = f'''<span class="streak-pill" data-sid="{row['id']}" title="{streak}-day streak">&#128293; {streak} day{"s" if streak != 1 else ""}</span>'''
+            if streak >= 7:
+                streak_html = f'<span class="streak-pill" data-sid="{row["id"]}" title="{streak}-day streak">&#128293; {streak} days &middot; don\'t break it</span>'
+            elif streak > 0:
+                streak_html = f'<span class="streak-pill" data-sid="{row["id"]}" title="{streak}-day streak">&#128293; {streak} day{"s" if streak != 1 else ""}</span>'
             else:
-                streak_html = f'''<span class="streak-pill empty" data-sid="{row['id']}">No streak</span>'''
+                streak_html = f'<span class="streak-pill empty" data-sid="{row["id"]}">Start your streak today</span>'
 
             rows_html += f"""
 <tr>
@@ -1748,7 +1785,6 @@ def dashboard():
 <script>
 function toggleToday(btn, systemId) {{
   btn.disabled = true;
-  var orig = btn.innerHTML;
 
   fetch('/complete_today/' + systemId, {{ method: 'POST' }})
     .then(function(r) {{ return r.json(); }})
@@ -1764,16 +1800,19 @@ function toggleToday(btn, systemId) {{
         btn.title      = 'Mark as done for today';
       }}
 
-      // Update streak pill in same today-cell-inner
       var pill = btn.parentElement.querySelector('.streak-pill[data-sid="' + systemId + '"]');
       if (pill) {{
-        if (data.streak > 0) {{
+        if (data.streak >= 7) {{
+          pill.innerHTML = '&#128293; ' + data.streak + ' days &middot; don\\'t break it';
+          pill.title     = data.streak + '-day streak';
+          pill.className = 'streak-pill';
+        }} else if (data.streak > 0) {{
           var days = data.streak === 1 ? 'day' : 'days';
           pill.innerHTML = '&#128293; ' + data.streak + ' ' + days;
           pill.title     = data.streak + '-day streak';
           pill.className = 'streak-pill';
         }} else {{
-          pill.innerHTML = 'No streak';
+          pill.innerHTML = 'Start your streak today';
           pill.title     = 'No streak yet';
           pill.className = 'streak-pill empty';
         }}
@@ -1793,6 +1832,131 @@ function toggleToday(btn, systemId) {{
 
 
 # =======================================================
+#  PROGRESS   /progress
+# =======================================================
+@app.route("/progress")
+@login_required
+def progress():
+    user_id = session["user_id"]
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, goal, book FROM systems WHERE user_id = ? ORDER BY id DESC",
+        (user_id,)
+    ).fetchall()
+    conn.close()
+
+    if not rows:
+        body = """
+<div class="page-header">
+  <h1>Progress</h1>
+  <p>Your weekly consistency, at a glance.</p>
+</div>
+<div class="empty-state">
+  <div class="empty-icon">&#128202;</div>
+  <h3>Nothing to track yet</h3>
+  <p>Create your first system to start seeing your progress here.</p>
+  <a href="/" class="btn btn-primary btn-lg" style="margin-top:14px;">Create a system &rarr;</a>
+</div>
+"""
+        return page("Progress", body, active="progress")
+
+    # Aggregate stats
+    total_systems       = len(rows)
+    total_completions   = get_total_completions(user_id)
+    best_streak_overall = max((get_streak(user_id, r["id"]) for r in rows), default=0)
+    today_str           = get_today()
+
+    # Per-system weekly cards
+    cards_html = ""
+    week_total_done = 0
+    week_total_max  = 0
+
+    for row in rows:
+        completed, days = get_week_stats(user_id, row["id"])
+        streak = get_streak(user_id, row["id"])
+        week_total_done += completed
+        week_total_max  += 7
+
+        goal_safe = (row["goal"] or "").replace("<","&lt;").replace(">","&gt;")
+        book_safe = (row["book"] or "").replace("<","&lt;").replace(">","&gt;")
+        pct       = int((completed / 7) * 100)
+
+        dots_html = ""
+        for d in days:
+            cls = "week-dot"
+            if d["done"]:
+                cls += " done"
+            if d["date"] == today_str:
+                cls += " today"
+            dots_html += f'<div class="{cls}" title="{d["date"]}">{d["label"]}</div>'
+
+        if streak >= 7:
+            streak_label = f'<span class="streak-pill">&#128293; {streak} days &middot; don\'t break it</span>'
+        elif streak > 0:
+            streak_label = f'<span class="streak-pill">&#128293; {streak} day{"s" if streak != 1 else ""}</span>'
+        else:
+            streak_label = '<span class="streak-pill empty">No streak</span>'
+
+        cards_html += f"""
+<div class="progress-system-card">
+  <div class="progress-system-head">
+    <div>
+      <div class="progress-system-title">{goal_safe}</div>
+      <div class="progress-system-sub">{book_safe}</div>
+    </div>
+    {streak_label}
+  </div>
+
+  <div class="week-strip">
+    <div class="week-strip-info">
+      <strong>{completed}/7 days</strong> this week
+      <div style="margin-top:2px;">{"You're showing up." if completed >= 4 else "Show up tomorrow."}</div>
+    </div>
+    <div class="week-dots">{dots_html}</div>
+  </div>
+
+  <div class="progress-bar-track">
+    <div class="progress-bar-fill" style="width:{pct}%;"></div>
+  </div>
+</div>
+"""
+
+    overall_pct = int((week_total_done / week_total_max) * 100) if week_total_max else 0
+
+    body = f"""
+<div class="page-header">
+  <h1>Progress</h1>
+  <p>Your weekly consistency, at a glance. Show up daily &mdash; the rest takes care of itself.</p>
+</div>
+
+<div class="stats-row">
+  <div class="stat-card">
+    <div class="stat-label">This Week</div>
+    <div class="stat-value">{week_total_done}/{week_total_max}</div>
+    <div class="stat-sub">{overall_pct}% completion rate</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Best Streak</div>
+    <div class="stat-value">{best_streak_overall}</div>
+    <div class="stat-sub">consecutive days</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total Check-ins</div>
+    <div class="stat-value">{total_completions}</div>
+    <div class="stat-sub">across {total_systems} system{"s" if total_systems != 1 else ""}</div>
+  </div>
+</div>
+
+<div class="card-header" style="border-bottom:none; padding-bottom:0; margin-bottom:8px;">
+  <span class="card-title">By System</span>
+</div>
+
+{cards_html}
+"""
+    return page("Progress", body, active="progress")
+
+
+# =======================================================
 #  VIEW SINGLE SYSTEM   /system/<id>
 # =======================================================
 @app.route("/system/<int:system_id>")
@@ -1807,10 +1971,11 @@ def view_system(system_id):
 
     if not row:
         body = '<div class="alert alert-error">System not found or access denied.</div>'
-        body += '<a href="/dashboard" class="btn btn-outline">&larr; Dashboard</a>'
+        body += '<a href="/dashboard" class="btn btn-secondary">&larr; Dashboard</a>'
         return page("Not Found", body)
 
-    escaped   = (row["output_text"] or "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+    cleaned   = clean_ai_output(row["output_text"] or "")
+    escaped   = cleaned.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
     goal_safe = (row["goal"] or "").replace("<","&lt;").replace(">","&gt;")
     book_safe = (row["book"] or "").replace("<","&lt;").replace(">","&gt;")
 
@@ -1831,13 +1996,13 @@ def view_system(system_id):
       <div class="card-title" style="margin-bottom:6px;">System #{row['id']}</div>
       <div style="font-family:'DM Serif Display',serif; font-size:22px; color:var(--text); margin-bottom:6px;">{goal_safe}</div>
       <div class="flex gap-8 items-center" style="flex-wrap:wrap;">
-        <span class="chip">&#128218; {book_safe}</span>
-        <span class="chip">&#128197; {date_str}</span>
+        <span class="chip">{book_safe}</span>
+        <span class="chip">{date_str}</span>
       </div>
     </div>
     <form method="POST" action="/pdf_by_id">
       <input type="hidden" name="system_id" value="{row['id']}">
-      <button class="btn btn-secondary btn-sm">&#128196; Download PDF</button>
+      <button class="btn btn-secondary btn-sm">Download PDF</button>
     </form>
   </div>
 </div>
@@ -1850,7 +2015,7 @@ def view_system(system_id):
   </div>
 </div>
 """
-    return page(f"System &#8212; {goal_safe}", body)
+    return page("System", body)
 
 
 # =======================================================
@@ -1890,9 +2055,9 @@ def _sanitise_for_pdf(text: str) -> str:
 
 
 def _build_pdf(content, title=""):
-    """Build and return a PDF file from text content."""
-    MARGIN = 15
-    LINE_H = 7
+    """Build a clean, branded PDF from text content."""
+    MARGIN = 18
+    LINE_H = 6.5
 
     pdf_doc = FPDF()
     pdf_doc.set_margins(left=MARGIN, top=MARGIN, right=MARGIN)
@@ -1901,24 +2066,50 @@ def _build_pdf(content, title=""):
 
     usable_w = max(pdf_doc.w - 2 * MARGIN, 50)
 
-    def write_line(text, style, size, line_h):
-        pdf_doc.set_font("Helvetica", style=style, size=size)
-        pdf_doc.set_x(MARGIN)
-        clean = _sanitise_for_pdf(text)
-        if not clean.strip():
-            pdf_doc.ln(line_h)
-            return
-        try:
-            pdf_doc.multi_cell(usable_w, line_h, clean)
-        except Exception:
-            pdf_doc.ln(line_h)
+    # Green header band
+    pdf_doc.set_fill_color(22, 163, 74)
+    pdf_doc.rect(0, 0, pdf_doc.w, 22, style="F")
+    pdf_doc.set_xy(MARGIN, 7)
+    pdf_doc.set_font("Helvetica", "B", 16)
+    pdf_doc.set_text_color(255, 255, 255)
+    pdf_doc.cell(0, 8, "CONSC  -  Behavior System", ln=1)
+    pdf_doc.set_text_color(17, 24, 39)
+    pdf_doc.ln(10)
 
-    write_line("consc.app -- Action System", "B", 16, 10)
     if title:
-        write_line(title, "I", 12, 8)
-    pdf_doc.ln(4)
-    for line in (content or "").split("\n"):
-        write_line(line, "", 11, LINE_H)
+        pdf_doc.set_font("Helvetica", "B", 13)
+        pdf_doc.set_x(MARGIN)
+        pdf_doc.multi_cell(usable_w, 7, _sanitise_for_pdf(title))
+        pdf_doc.ln(2)
+        pdf_doc.set_draw_color(220, 252, 231)
+        pdf_doc.set_line_width(0.6)
+        pdf_doc.line(MARGIN, pdf_doc.get_y(), pdf_doc.w - MARGIN, pdf_doc.get_y())
+        pdf_doc.ln(5)
+
+    cleaned = clean_ai_output(content or "")
+
+    for line in cleaned.split("\n"):
+        clean = _sanitise_for_pdf(line)
+
+        if re.match(r'^\d+\.\s+\S', clean):
+            pdf_doc.ln(2)
+            pdf_doc.set_font("Helvetica", "B", 12)
+            pdf_doc.set_text_color(20, 83, 45)
+            pdf_doc.set_x(MARGIN)
+            pdf_doc.multi_cell(usable_w, LINE_H + 1, clean)
+            pdf_doc.set_text_color(17, 24, 39)
+            pdf_doc.ln(1)
+            continue
+
+        pdf_doc.set_font("Helvetica", "", 11)
+        pdf_doc.set_x(MARGIN)
+        if not clean.strip():
+            pdf_doc.ln(LINE_H * 0.6)
+        else:
+            try:
+                pdf_doc.multi_cell(usable_w, LINE_H, clean)
+            except Exception:
+                pdf_doc.ln(LINE_H)
 
     buffer = io.BytesIO(pdf_doc.output())
     return send_file(
@@ -1935,22 +2126,21 @@ def _build_pdf(content, title=""):
 @app.route("/complete_today/<int:system_id>", methods=["POST"])
 @login_required
 def complete_today(system_id):
-    """
-    Toggle today's completion for a system.
-
-    Returns JSON with the new state AND the updated streak so the dashboard
-    can refresh both the button and the badge without a page reload.
-
-    Response: { "completed": bool, "system_id": int, "streak": int }
-    """
     user_id = session["user_id"]
     today   = get_today()
 
+    # Verify ownership
     conn = get_db()
+    owns = conn.execute(
+        "SELECT 1 FROM systems WHERE id = ? AND user_id = ?",
+        (system_id, user_id)
+    ).fetchone()
+    if not owns:
+        conn.close()
+        return jsonify({"error": "not found"}), 404
 
     existing = conn.execute(
-        """SELECT id, completed
-           FROM daily_progress
+        """SELECT id, completed FROM daily_progress
            WHERE user_id = ? AND system_id = ? AND date = ?""",
         (user_id, system_id, today)
     ).fetchone()
@@ -1972,16 +2162,117 @@ def complete_today(system_id):
     conn.commit()
     conn.close()
 
-    # Compute streak AFTER the DB write so it reflects the toggled state
     streak = get_streak(user_id, system_id)
-
     return jsonify({"completed": new_status, "system_id": system_id, "streak": streak})
+
+
+# =======================================================
+#  SETTINGS   /settings
+# =======================================================
+@app.route("/settings")
+@login_required
+def settings_page():
+    conn = get_db()
+    user = conn.execute(
+        "SELECT username, email FROM users WHERE id = ?", (session["user_id"],)
+    ).fetchone()
+    conn.close()
+
+    if not user:
+        session.clear()
+        return redirect(url_for("login"))
+
+    body = f"""
+<div class="page-header">
+  <h1>Settings</h1>
+  <p>Manage your account, preferences, and data.</p>
+</div>
+
+<div class="card">
+  <div class="card-header"><span class="card-title">Account</span></div>
+  <div class="form-grid">
+    <div class="field">
+      <label>Username</label>
+      <input value="{user['username']}" disabled>
+    </div>
+    <div class="field">
+      <label>Email</label>
+      <input value="{user['email']}" disabled>
+    </div>
+  </div>
+  <button class="btn btn-secondary" onclick="alert('Password change coming soon. Contact support if you need help.')">Change password</button>
+</div>
+
+<div class="card">
+  <div class="card-header"><span class="card-title">Preferences</span></div>
+  <div class="form-grid">
+    <div class="field">
+      <label>Daily reminder time</label>
+      <input type="time" value="09:00">
+    </div>
+    <div class="field">
+      <label>Default difficulty</label>
+      <select>
+        <option>Easy</option>
+        <option selected>Medium</option>
+        <option>Hard</option>
+      </select>
+    </div>
+  </div>
+  <div class="field">
+    <label>Email notifications</label>
+    <select>
+      <option>Daily reminder</option>
+      <option>Weekly summary only</option>
+      <option>Off</option>
+    </select>
+  </div>
+  <p class="field-hint">Preferences are saved locally for now &mdash; backend hookup coming soon.</p>
+</div>
+
+<div class="card">
+  <div class="card-header"><span class="card-title">About Consc</span></div>
+  <p style="font-size:14px; color:var(--text-muted); line-height:1.7;">
+    Consc exists to close the gap between knowing and doing.
+    We don&#39;t give advice &mdash; we build systems that force execution.
+    Every system you generate is tied to a daily action and a streak,
+    because behavior changes through repetition, not inspiration.
+  </p>
+</div>
+
+<div class="card danger-card">
+  <div class="card-header"><span class="card-title">Danger Zone</span></div>
+  <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">
+    Deleting your account permanently removes all your systems, streaks, and history. This cannot be undone.
+  </p>
+  <form method="POST" action="/delete_account"
+        onsubmit="return confirm('This will permanently delete your account and ALL data. Are you sure?');">
+    <button class="btn btn-danger">Delete my account</button>
+  </form>
+</div>
+"""
+    return page("Settings", body, active="settings")
+
+
+@app.route("/delete_account", methods=["POST"])
+@login_required
+def delete_account():
+    user_id = session["user_id"]
+    conn = get_db()
+    conn.execute("DELETE FROM daily_progress WHERE user_id = ?", (user_id,))
+    conn.execute("DELETE FROM systems        WHERE user_id = ?", (user_id,))
+    conn.execute("DELETE FROM users          WHERE id      = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    session.clear()
+    return redirect(url_for("signup"))
 
 
 # =======================================================
 #  FEEDBACK   /feedback
 # =======================================================
 @app.route("/feedback")
+@login_required
 def feedback():
     conn = get_db()
     rows = conn.execute(
@@ -1995,15 +2286,15 @@ def feedback():
         if row["reply"]:
             reply_html = (
                 f'<div class="feedback-reply">'
-                f'&#128172; <strong>Reply:</strong> {row["reply"]}'
+                f'<strong>Reply:</strong> {row["reply"]}'
                 f'</div>'
             )
-        msg = (row["message"]
-               .replace("&","&amp;").replace("<","&lt;").replace(">","&gt;"))
+        msg = (row["message"] or "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+        name = (row["name"] or "Anonymous").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
         items_html += f"""
 <div class="feedback-card">
   <div class="feedback-author">
-    <span class="feedback-author-dot"></span>{row['name']}
+    <span class="feedback-author-dot"></span>{name}
   </div>
   <div class="feedback-msg">{msg}</div>
   {reply_html}
@@ -2031,7 +2322,7 @@ def feedback():
     </div>
     <div class="field">
       <label>Message</label>
-      <textarea name="message" placeholder="What's on your mind?" required></textarea>
+      <textarea name="message" placeholder="What&#39;s on your mind?" required></textarea>
     </div>
     <button class="btn btn-primary">Send Feedback</button>
   </form>
@@ -2044,6 +2335,7 @@ def feedback():
 
 
 @app.route("/feedback_submit", methods=["POST"])
+@login_required
 def feedback_submit():
     name    = request.form.get("name",    "").strip()
     message = request.form.get("message", "").strip()
@@ -2072,4 +2364,4 @@ def feedback_submit():
 # =======================================================
 if __name__ == "__main__":
     debug_mode = os.getenv("DEBUG", "false").lower() == "true"
-    app.run(debug=debug_mode)
+    app.run(debug=debug_mode, host="0.0.0.0", port=int(os.getenv("PORT", "5000")))
