@@ -188,259 +188,1078 @@ def login_required(f):
 #  Shared CSS
 # =======================================================
 BASE_STYLE = """
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:      #080e1a;
-  --surface: #0f1c2e;
-  --card:    #162032;
-  --border:  #1e3a5f;
-  --accent:  #38bdf8;
-  --accent2: #818cf8;
-  --green:   #34d399;
-  --red:     #f87171;
-  --text:    #e2e8f0;
-  --muted:   #64748b;
-  --radius:  12px;
+  /* Brand */
+  --green:       #16a34a;
+  --green-light: #dcfce7;
+  --green-mid:   #bbf7d0;
+  --green-dark:  #14532d;
+
+  /* Surface */
+  --bg:          #f8fafc;
+  --bg-alt:      #f1f5f9;
+  --card:        #ffffff;
+  --sidebar:     #ffffff;
+
+  /* Text */
+  --text:        #0f172a;
+  --text-muted:  #64748b;
+  --text-xs:     #94a3b8;
+
+  /* Chrome */
+  --border:      #e2e8f0;
+  --border-mid:  #cbd5e1;
+  --shadow-sm:   0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-md:   0 4px 16px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.05);
+  --shadow-lg:   0 12px 40px rgba(0,0,0,.10), 0 4px 12px rgba(0,0,0,.06);
+
+  /* Radius */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 20px;
+
+  /* Layout */
+  --sidebar-w: 240px;
 }
+
+/* ── Reset & Base ── */
+html { font-size: 16px; }
 
 body {
   background: var(--bg);
   color: var(--text);
   font-family: 'DM Sans', sans-serif;
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.6;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Sidebar Layout ── */
+.layout {
+  display: flex;
   min-height: 100vh;
 }
 
-body::before {
-  content: '';
-  position: fixed; inset: 0;
-  background:
-    radial-gradient(ellipse 60% 40% at 20% 10%, #0c1f3d 0%, transparent 60%),
-    radial-gradient(ellipse 50% 40% at 80% 90%, #0e1a35 0%, transparent 60%);
-  pointer-events: none; z-index: 0;
+/* SIDEBAR */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  z-index: 100;
+  transition: transform .25s ease;
 }
 
-.wrapper {
-  position: relative; z-index: 1;
-  max-width: 880px; margin: 0 auto;
-  padding: 40px 24px 80px;
-}
-
-nav {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 56px;
-}
-.logo {
-  font-family: 'Syne', sans-serif; font-weight: 800;
-  font-size: 22px; color: var(--accent); text-decoration: none;
-}
-.nav-links { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
-.nav-links a {
-  color: var(--muted); text-decoration: none; font-size: 14px;
-  transition: color .2s;
-}
-.nav-links a:hover, .nav-links a.active { color: var(--accent); }
-.nav-user {
-  font-size: 13px; color: var(--muted);
-  border: 1px solid var(--border); border-radius: 100px;
-  padding: 4px 14px;
-}
-
-.hero h1 {
-  font-family: 'Syne', sans-serif; font-weight: 800;
-  font-size: clamp(30px, 5vw, 50px);
-  line-height: 1.15; letter-spacing: -1px; margin-bottom: 14px;
-}
-.hero h1 span { color: var(--accent); }
-.hero p { color: var(--muted); font-size: 17px; max-width: 520px; }
-.trust {
-  display: inline-block; margin-top: 12px; font-size: 13px;
-  color: var(--muted); border: 1px solid var(--border);
-  border-radius: 100px; padding: 4px 14px;
-}
-
-.card {
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 28px; margin-bottom: 22px;
-}
-.card-title {
-  font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 700;
-  letter-spacing: 1.4px; text-transform: uppercase;
-  color: var(--accent); margin-bottom: 18px;
-}
-
-label {
-  display: block; font-size: 13px; color: var(--muted);
-  margin-bottom: 5px; margin-top: 2px;
-}
-input, select, textarea {
-  width: 100%; padding: 12px 16px;
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: 8px; color: var(--text);
-  font-family: 'DM Sans', sans-serif; font-size: 15px;
-  margin-bottom: 14px;
-  transition: border-color .2s, box-shadow .2s; outline: none;
-}
-input::placeholder, textarea::placeholder { color: var(--muted); }
-input:focus, select:focus, textarea:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(56,189,248,.12);
-}
-select option { background: var(--surface); }
-textarea { resize: vertical; min-height: 90px; }
-
-.btn {
-  display: inline-block; padding: 13px 28px; border-radius: 8px;
-  border: none; font-family: 'Syne', sans-serif; font-size: 15px;
-  font-weight: 700; cursor: pointer; text-decoration: none;
-  transition: opacity .2s, transform .15s;
-}
-.btn:hover  { opacity: .85; transform: translateY(-1px); }
-.btn:active { transform: translateY(0); }
-.btn-primary { background: var(--accent);  color: #060e1b; width: 100%; text-align: center; }
-.btn-green   { background: var(--green);   color: #060e1b; }
-.btn-red     { background: var(--red);     color: #060e1b; }
-.btn-purple  { background: var(--accent2); color: #060e1b; }
-.btn-outline {
-  background: transparent; border: 1px solid var(--border); color: var(--text);
-}
-.btn-outline:hover { border-color: var(--accent); color: var(--accent); }
-.btn-sm { padding: 8px 16px; font-size: 13px; }
-
-.alert {
-  padding: 14px 18px; border-radius: 8px;
-  margin-bottom: 22px; font-size: 14px;
-}
-.alert-success { background: rgba(52,211,153,.1);  border: 1px solid var(--green); color: var(--green); }
-.alert-error   { background: rgba(248,113,113,.1); border: 1px solid var(--red);   color: var(--red);   }
-.alert-info    { background: rgba(56,189,248,.08); border: 1px solid var(--accent); color: var(--accent); }
-
-.row { display: flex; gap: 14px; }
-.row > * { flex: 1; }
-@media (max-width: 540px) { .row { flex-direction: column; } }
-
-.samples { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 30px; }
-.chip {
-  padding: 8px 16px; background: var(--card);
-  border: 1px solid var(--border); border-radius: 100px;
-  font-size: 13px; color: var(--muted);
-}
-.chip strong { color: var(--text); }
-
-.result-body {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: 10px; padding: 24px; line-height: 1.8;
-  font-size: 15px; white-space: pre-wrap;
-}
-
-/* Streak badge -- sits inline after the toggle button */
-.streak-badge {
-  display: inline-block;
-  margin-left: 8px;
-  font-size: 12px;
-  color: var(--green);
-  font-weight: 700;
-  vertical-align: middle;
-  min-width: 28px;   /* keeps layout stable when the number changes */
-}
-
-/* Dashboard table */
-.dash-table { width: 100%; border-collapse: collapse; }
-.dash-table th {
-  text-align: left; font-size: 12px; font-weight: 700;
-  letter-spacing: 1px; text-transform: uppercase;
-  color: var(--muted); padding: 10px 14px;
+.sidebar-logo {
+  padding: 24px 20px 20px;
   border-bottom: 1px solid var(--border);
 }
-.dash-table td {
-  padding: 14px; border-bottom: 1px solid var(--border);
-  font-size: 14px; vertical-align: middle;
+.sidebar-logo a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--text);
 }
-.dash-table tr:last-child td { border-bottom: none; }
-.dash-table tr:hover td { background: rgba(56,189,248,.04); }
+.logo-mark {
+  width: 32px; height: 32px;
+  background: var(--green);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  color: white;
+  font-size: 16px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.logo-text {
+  font-family: 'DM Serif Display', serif;
+  font-size: 18px;
+  letter-spacing: -0.3px;
+  color: var(--text);
+}
+.logo-tagline {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  margin-top: 1px;
+}
 
-.auth-wrap {
-  max-width: 420px; margin: 60px auto;
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: 16px; padding: 36px;
+.sidebar-nav {
+  flex: 1;
+  padding: 12px 12px;
+  overflow-y: auto;
 }
-.auth-wrap h2 {
-  font-family: 'Syne', sans-serif; font-size: 24px;
-  font-weight: 800; margin-bottom: 6px;
-}
-.auth-wrap p { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
-.auth-switch { text-align: center; font-size: 14px; margin-top: 20px; color: var(--muted); }
-.auth-switch a { color: var(--accent); text-decoration: none; }
 
-.feedback-item {
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 20px; margin-bottom: 14px;
+.nav-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-xs);
+  padding: 8px 8px 6px;
+  margin-top: 8px;
 }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: var(--r-sm);
+  text-decoration: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 500;
+  transition: all .15s ease;
+  margin-bottom: 2px;
+}
+.nav-item:hover {
+  background: var(--bg-alt);
+  color: var(--text);
+}
+.nav-item.active {
+  background: var(--green-light);
+  color: var(--green-dark);
+  font-weight: 600;
+}
+.nav-item.active .nav-icon { color: var(--green); }
+.nav-icon {
+  width: 18px; height: 18px;
+  opacity: .7;
+  flex-shrink: 0;
+}
+.nav-item.active .nav-icon { opacity: 1; }
+
+.sidebar-footer {
+  padding: 16px;
+  border-top: 1px solid var(--border);
+}
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: var(--r-sm);
+}
+.avatar {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--green-light);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--green-dark);
+  flex-shrink: 0;
+}
+.user-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.2;
+}
+.user-role {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.sidebar-logout {
+  display: block;
+  text-align: center;
+  margin-top: 8px;
+  padding: 7px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: all .15s;
+  border: 1px solid var(--border);
+}
+.sidebar-logout:hover {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fecaca;
+}
+
+/* ── Main Content ── */
+.main {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Top Header ── */
+.topbar {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  padding: 0 32px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.topbar-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.topbar-breadcrumb {
+  font-size: 13px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.topbar-breadcrumb span { color: var(--text-xs); }
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.topbar-user-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* Mobile menu toggle */
+.menu-toggle {
+  display: none;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 18px;
+  color: var(--text);
+}
+
+/* ── Page Content ── */
+.content {
+  flex: 1;
+  padding: 36px 40px;
+  max-width: 980px;
+  width: 100%;
+}
+
+.page-header {
+  margin-bottom: 28px;
+}
+.page-header h1 {
+  font-family: 'DM Serif Display', serif;
+  font-size: 28px;
+  font-weight: 400;
+  letter-spacing: -.5px;
+  color: var(--text);
+  line-height: 1.2;
+}
+.page-header p {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+/* ── Cards ── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 28px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 20px;
+}
+.card-sm {
+  padding: 20px;
+  border-radius: var(--r-md);
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .3px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .8px;
+}
+.card-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ── Form Elements ── */
+.field {
+  margin-bottom: 18px;
+}
+.field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.field label span {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  transition: border-color .15s, box-shadow .15s;
+  outline: none;
+  appearance: none;
+}
+.field input::placeholder,
+.field textarea::placeholder { color: var(--text-xs); }
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(22,163,74,.10);
+  background: #fff;
+}
+.field select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+  cursor: pointer;
+}
+.field textarea { resize: vertical; min-height: 88px; }
+.field-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 5px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 20px;
+  border-radius: var(--r-sm);
+  border: none;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all .15s ease;
+  white-space: nowrap;
+  line-height: 1;
+}
+.btn:hover { transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+.btn:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+
+.btn-primary {
+  background: var(--green);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(22,163,74,.3);
+}
+.btn-primary:hover { background: #15803d; box-shadow: 0 4px 12px rgba(22,163,74,.35); }
+
+.btn-secondary {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover { background: var(--bg-alt); border-color: var(--border-mid); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+}
+.btn-ghost:hover { background: var(--bg-alt); color: var(--text); }
+
+.btn-danger {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+.btn-danger:hover { background: #fee2e2; }
+
+.btn-done {
+  background: var(--green-light);
+  color: var(--green-dark);
+  border: 1px solid var(--green-mid);
+}
+.btn-done:hover { background: var(--green-mid); }
+
+.btn-mark {
+  background: var(--card);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+.btn-mark:hover { border-color: var(--green); color: var(--green); background: var(--green-light); }
+
+.btn-full { width: 100%; }
+.btn-lg { padding: 13px 28px; font-size: 15px; }
+.btn-sm { padding: 7px 14px; font-size: 13px; }
+.btn-xs { padding: 5px 10px; font-size: 12px; }
+
+.btn-icon {
+  width: 32px; height: 32px;
+  padding: 0;
+  border-radius: 6px;
+}
+
+/* ── Alerts ── */
+.alert {
+  padding: 13px 16px;
+  border-radius: var(--r-sm);
+  font-size: 13.5px;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid;
+}
+.alert-success { background: var(--green-light); color: var(--green-dark); border-color: var(--green-mid); }
+.alert-error   { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+.alert-info    { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+.alert-warn    { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+
+/* ── Dashboard Table ── */
+.systems-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.systems-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.systems-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.systems-table tr:last-child td { border-bottom: none; }
+.systems-table tbody tr {
+  transition: background .12s;
+}
+.systems-table tbody tr:hover td { background: var(--bg); }
+
+.goal-cell {
+  font-weight: 500;
+  color: var(--text);
+  max-width: 200px;
+}
+.meta-cell { color: var(--text-muted); font-size: 13px; }
+.date-cell { color: var(--text-muted); font-size: 13px; white-space: nowrap; }
+
+/* ── Streak Badge ── */
+.streak-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fed7aa;
+  white-space: nowrap;
+  min-width: 20px;
+}
+.streak-pill.empty {
+  background: var(--bg-alt);
+  color: var(--text-xs);
+  border-color: var(--border);
+  font-weight: 400;
+}
+.streak-broken {
+  display: block;
+  font-size: 11px;
+  color: #dc2626;
+  margin-top: 3px;
+}
+
+/* ── Today Cell ── */
+.today-cell {
+  white-space: nowrap;
+}
+.today-cell-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ── Action Buttons ── */
+.action-group {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* ── Result Output ── */
+.result-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  margin-top: 28px;
+}
+.result-header {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.result-header-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.result-body {
+  padding: 28px;
+  font-size: 14.5px;
+  line-height: 1.85;
+  white-space: pre-wrap;
+  color: var(--text);
+}
+.result-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ── Auth Pages ── */
+.auth-page {
+  min-height: 100vh;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.auth-panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 44px 40px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: var(--shadow-lg);
+}
+.auth-logo {
+  text-align: center;
+  margin-bottom: 32px;
+}
+.auth-logo-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px; height: 48px;
+  background: var(--green);
+  border-radius: 14px;
+  color: white;
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+.auth-panel h2 {
+  font-family: 'DM Serif Display', serif;
+  font-size: 26px;
+  font-weight: 400;
+  text-align: center;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.auth-panel .subtitle {
+  font-size: 14px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-bottom: 28px;
+}
+.auth-divider {
+  text-align: center;
+  margin: 20px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.auth-switch {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.auth-switch a { color: var(--green); text-decoration: none; font-weight: 600; }
+.auth-switch a:hover { text-decoration: underline; }
+
+/* ── Feedback ── */
+.feedback-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 18px 20px;
+  margin-bottom: 12px;
+  transition: box-shadow .15s;
+}
+.feedback-card:hover { box-shadow: var(--shadow-sm); }
 .feedback-author {
-  font-family: 'Syne', sans-serif; font-size: 14px;
-  font-weight: 700; color: var(--accent); margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+.feedback-author-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  display: inline-block;
+}
+.feedback-msg { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
 .feedback-reply {
-  margin-top: 12px; padding: 10px 14px;
-  background: var(--surface); border-left: 3px solid var(--accent2);
-  border-radius: 6px; font-size: 14px; color: var(--muted);
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: var(--bg);
+  border-left: 3px solid var(--green);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  font-size: 13px;
+  color: var(--text-muted);
 }
 
-h2 {
-  font-family: 'Syne', sans-serif; font-size: 26px;
-  font-weight: 800; margin-bottom: 20px; letter-spacing: -.5px;
+/* ── Empty States ── */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
 }
-h3 {
-  font-family: 'Syne', sans-serif; font-size: 18px;
-  font-weight: 700; margin-bottom: 14px;
+.empty-icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+  opacity: .5;
+}
+.empty-state h3 {
+  font-family: 'DM Serif Display', serif;
+  font-size: 20px;
+  font-weight: 400;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+.empty-state p {
+  font-size: 14px;
+  color: var(--text-muted);
+  max-width: 300px;
+  margin: 0 auto 20px;
+}
+
+/* ── Stats Row ── */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.stat-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-sm);
+}
+.stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.stat-value {
+  font-family: 'DM Serif Display', serif;
+  font-size: 28px;
+  color: var(--text);
+  line-height: 1;
+}
+.stat-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* ── Chips / Tags ── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text-muted);
+}
+
+/* ── Utility ── */
+.text-muted { color: var(--text-muted); }
+.text-xs    { font-size: 12px; }
+.text-sm    { font-size: 13px; }
+.mt-4  { margin-top: 4px; }
+.mt-8  { margin-top: 8px; }
+.mt-16 { margin-top: 16px; }
+.mt-24 { margin-top: 24px; }
+.mb-4  { margin-bottom: 4px; }
+.mb-8  { margin-bottom: 8px; }
+.mb-16 { margin-bottom: 16px; }
+.mb-24 { margin-bottom: 24px; }
+.flex  { display: flex; }
+.items-center { align-items: center; }
+.gap-8  { gap: 8px; }
+.gap-12 { gap: 12px; }
+
+/* ── Mobile overlay ── */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.3);
+  z-index: 99;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .sidebar {
+    transform: translateX(-100%);
+  }
+  .sidebar.open {
+    transform: translateX(0);
+    box-shadow: var(--shadow-lg);
+  }
+  .sidebar-overlay.open { display: block; }
+  .main { margin-left: 0; }
+  .menu-toggle { display: flex; align-items: center; }
+  .content { padding: 20px 16px; }
+  .form-grid { grid-template-columns: 1fr; }
+  .stats-row { grid-template-columns: 1fr; }
+  .topbar { padding: 0 16px; }
+  .systems-table th:nth-child(2),
+  .systems-table td:nth-child(2) { display: none; }
+}
+
+/* ── Loading state ── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.btn-loading {
+  position: relative;
+  color: transparent !important;
+  pointer-events: none;
+}
+.btn-loading::after {
+  content: "";
+  position: absolute;
+  width: 16px; height: 16px;
+  top: 50%; left: 50%;
+  margin: -8px 0 0 -8px;
+  border: 2px solid rgba(255,255,255,.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .65s linear infinite;
+}
+.btn-primary.btn-loading::after {
+  border-color: rgba(255,255,255,.3);
+  border-top-color: #fff;
+}
+.btn-secondary.btn-loading::after {
+  border-color: rgba(15,23,42,.15);
+  border-top-color: var(--text);
+}
+
+/* ── Micro-interactions ── */
+.btn {
+  /* already has transition — extend it */
+  transition: all .15s ease;
+  user-select: none;
+}
+.btn:active:not(:disabled) {
+  transform: scale(.97) translateY(0) !important;
+  opacity: .9;
+}
+.btn-primary:active:not(:disabled) {
+  box-shadow: 0 1px 3px rgba(22,163,74,.2) !important;
+}
+/* Inputs — smooth focus ring */
+.field input, .field select, .field textarea {
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+/* Card hover lift */
+.feedback-card {
+  transition: box-shadow .18s ease, transform .18s ease;
+}
+.feedback-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+/* Table row transition already set — add subtle left accent on active */
+.systems-table tbody tr:hover td:first-child {
+  box-shadow: inset 3px 0 0 var(--green);
+}
+
+/* ── First-time welcome banner ── */
+.welcome-banner {
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border: 1px solid var(--green-mid);
+  border-radius: var(--r-lg);
+  padding: 24px 28px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+.welcome-banner-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+  line-height: 1;
+  margin-top: 2px;
+}
+.welcome-banner h3 {
+  font-family: 'DM Serif Display', serif;
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--green-dark);
+  margin-bottom: 4px;
+}
+.welcome-banner p {
+  font-size: 13.5px;
+  color: #166534;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.welcome-banner .btn-primary {
+  font-size: 13px;
+  padding: 8px 18px;
+}
+
+/* ── Enhanced empty state ── */
+.empty-state {
+  text-align: center;
+  padding: 72px 24px 60px;
+  background: var(--card);
+  border: 2px dashed var(--border);
+  border-radius: var(--r-xl);
+}
+.empty-icon { font-size: 44px; margin-bottom: 14px; opacity: .6; }
+.empty-state h3 {
+  font-family: 'DM Serif Display', serif;
+  font-size: 22px; font-weight: 400;
+  color: var(--text); margin-bottom: 8px;
+}
+.empty-state p {
+  font-size: 14px; color: var(--text-muted);
+  max-width: 320px; margin: 0 auto 8px; line-height: 1.6;
+}
+.empty-hint {
+  font-size: 12px;
+  color: var(--text-xs);
+  margin-bottom: 24px;
+  font-style: italic;
+}
+
+/* ── Error alert — enhanced ── */
+.alert-error {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fecaca;
+  border-left: 3px solid #dc2626;
+}
+.error-retry {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: #dc2626;
+  cursor: pointer;
+  text-decoration: underline;
+  background: none;
+  border: none;
+  padding: 0;
+  flex-shrink: 0;
 }
 """
 
 
 # =======================================================
-#  Page wrapper
+#  Page wrapper  (sidebar + topbar layout)
 # =======================================================
 def page(title, body, active="home"):
     username = session.get("username")
 
+    # Build sidebar nav — only shown when logged in
     if username:
-        nav_right = (
-            f'<a href="/" {"class=\'active\'" if active == "home" else ""}>Generator</a>'
-            f'<a href="/dashboard" {"class=\'active\'" if active == "dashboard" else ""}>Dashboard</a>'
-            f'<a href="/feedback" {"class=\'active\'" if active == "feedback" else ""}>Feedback</a>'
-            f'<span class="nav-user">&#128100; {username}</span>'
-            f'<a href="/logout" class="btn btn-outline btn-sm">Logout</a>'
-        )
+        def nav(href, icon_svg, label, key):
+            cls = "nav-item active" if active == key else "nav-item"
+            return f'''<a href="{href}" class="{cls}">
+              <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{icon_svg}</svg>
+              {label}
+            </a>'''
+
+        sidebar_html = f'''
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <a href="/">
+      <div class="logo-mark">C</div>
+      <div>
+        <div class="logo-text">Consc</div>
+        <div class="logo-tagline">Behavior OS</div>
+      </div>
+    </a>
+  </div>
+
+  <nav class="sidebar-nav">
+    <div class="nav-section-label">Workspace</div>
+    {nav("/", '<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>', "System Builder", "home")}
+    {nav("/dashboard", '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>', "My Systems", "dashboard")}
+
+    <div class="nav-section-label" style="margin-top:16px;">Community</div>
+    {nav("/feedback", '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>', "Feedback", "feedback")}
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="sidebar-user">
+      <div class="avatar">{username[0].upper()}</div>
+      <div>
+        <div class="user-name">{username}</div>
+        <div class="user-role">Free Plan</div>
+      </div>
+    </div>
+    <a href="/logout" class="sidebar-logout">&#8592; Sign out</a>
+  </div>
+</aside>
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+'''
+
+        topbar_html = f'''
+<header class="topbar">
+  <div class="flex items-center gap-8">
+    <button class="menu-toggle" onclick="openSidebar()">&#9776;</button>
+    <div class="topbar-breadcrumb">
+      <span>Consc</span>
+      <span style="color:var(--border)">&#47;</span>
+      <strong style="color:var(--text)">{title}</strong>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <div class="topbar-user-pill">
+      <div class="avatar" style="width:24px;height:24px;font-size:11px;">{username[0].upper()}</div>
+      {username}
+    </div>
+  </div>
+</header>'''
+
+        layout_open  = '<div class="layout">'
+        layout_close = '</div>'
+        main_open    = '<div class="main">'
+        content_wrap = f'<div class="content">{body}</div>'
+        main_close   = '</div>'
+
     else:
-        nav_right = (
-            '<a href="/feedback">Feedback</a>'
-            '<a href="/login" class="btn btn-outline btn-sm">Login</a>'
-            '<a href="/signup" class="btn btn-primary btn-sm" style="width:auto;">Sign up</a>'
-        )
+        # Unauthenticated — full-page centered layout (auth pages)
+        sidebar_html = ""
+        topbar_html  = ""
+        layout_open  = ''
+        layout_close = ''
+        main_open    = ''
+        content_wrap = body
+        main_close   = ''
+
+    sidebar_js = '''
+<script>
+function openSidebar() {
+  document.getElementById("sidebar").classList.add("open");
+  document.getElementById("sidebar-overlay").classList.add("open");
+}
+function closeSidebar() {
+  document.getElementById("sidebar").classList.remove("open");
+  document.getElementById("sidebar-overlay").classList.remove("open");
+}
+</script>''' if username else ""
 
     return f"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>{title} &#8212; consc.app</title>
+  <title>{title} &#8212; Consc</title>
   <style>{BASE_STYLE}</style>
 </head>
 <body>
-<div class="wrapper">
-  <nav>
-    <a href="/" class="logo">&#9889; consc.app</a>
-    <div class="nav-links">{nav_right}</div>
-  </nav>
-  {body}
-</div>
+{layout_open}
+{sidebar_html}
+{main_open}
+{topbar_html}
+{content_wrap}
+{main_close}
+{layout_close}
+{sidebar_js}
 </body>
 </html>"""
-
 
 # =======================================================
 #  SIGNUP
@@ -459,7 +1278,7 @@ def signup():
         elif len(password) < 6:
             error = "Password must be at least 6 characters."
         else:
-            hashed = generate_password_hash(password)
+            hashed = generate_password_hash(password, method='pbkdf2:sha256')
             try:
                 conn = get_db()
                 cur = conn.execute(
@@ -477,20 +1296,33 @@ def signup():
     err_html = f'<div class="alert alert-error">{error}</div>' if error else ""
 
     body = f"""
-<div class="auth-wrap">
-  <h2>Create account</h2>
-  <p>Join consc.app and start building systems that stick.</p>
-  {err_html}
-  <form method="POST">
-    <label>Username</label>
-    <input name="username" placeholder="e.g. alex123" required>
-    <label>Email</label>
-    <input name="email" type="email" placeholder="you@email.com" required>
-    <label>Password <span style="color:var(--muted); font-weight:400;">(min 6 characters)</span></label>
-    <input name="password" type="password" placeholder="Choose a password" required>
-    <button class="btn btn-primary">Create Account &#128640;</button>
-  </form>
-  <p class="auth-switch">Already have an account? <a href="/login">Login &rarr;</a></p>
+<div class="auth-page">
+  <div class="auth-panel">
+    <div class="auth-logo">
+      <div class="auth-logo-mark">C</div>
+      <h2>Create your account</h2>
+      <p class="subtitle">Start correcting your behavior, not just tracking it.</p>
+    </div>
+    {err_html}
+    <form method="POST">
+      <div class="field">
+        <label>Username</label>
+        <input name="username" placeholder="e.g. alex123" required>
+      </div>
+      <div class="field">
+        <label>Email</label>
+        <input name="email" type="email" placeholder="you@email.com" required>
+      </div>
+      <div class="field">
+        <label>Password <span>(min 6 characters)</span></label>
+        <input name="password" type="password" placeholder="Choose a password" required>
+      </div>
+      <button class="btn btn-primary btn-full btn-lg" style="margin-top:6px;">
+        Get Started
+      </button>
+    </form>
+    <p class="auth-switch">Already have an account? <a href="/login">Sign in &rarr;</a></p>
+  </div>
 </div>
 """
     return page("Sign Up", body)
@@ -523,18 +1355,29 @@ def login():
     err_html = f'<div class="alert alert-error">{error}</div>' if error else ""
 
     body = f"""
-<div class="auth-wrap">
-  <h2>Welcome back</h2>
-  <p>Login to access your systems and dashboard.</p>
-  {err_html}
-  <form method="POST">
-    <label>Email</label>
-    <input name="email" type="email" placeholder="you@email.com" required>
-    <label>Password</label>
-    <input name="password" type="password" placeholder="Your password" required>
-    <button class="btn btn-primary">Login &rarr;</button>
-  </form>
-  <p class="auth-switch">No account yet? <a href="/signup">Sign up free &rarr;</a></p>
+<div class="auth-page">
+  <div class="auth-panel">
+    <div class="auth-logo">
+      <div class="auth-logo-mark">C</div>
+      <h2>Welcome back</h2>
+      <p class="subtitle">Your systems are waiting.</p>
+    </div>
+    {err_html}
+    <form method="POST">
+      <div class="field">
+        <label>Email</label>
+        <input name="email" type="email" placeholder="you@email.com" required>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input name="password" type="password" placeholder="Your password" required>
+      </div>
+      <button class="btn btn-primary btn-full btn-lg" style="margin-top:6px;">
+        Sign in
+      </button>
+    </form>
+    <p class="auth-switch">No account yet? <a href="/signup">Create one free &rarr;</a></p>
+  </div>
 </div>
 """
     return page("Login", body)
@@ -624,66 +1467,103 @@ Respond with exactly these 6 sections. Be specific, not generic:
 
     result_html = ""
     if error:
-        result_html = f'<div class="alert alert-error">{error}</div>'
+        # Clean up the raw OpenAI error string for display
+        user_msg = str(error)
+        if "auth" in user_msg.lower() or "api" in user_msg.lower():
+            user_msg = "API key error. Check your OPENAI_API_KEY environment variable."
+        elif "timeout" in user_msg.lower() or "connect" in user_msg.lower():
+            user_msg = "Connection timed out. Please try again."
+        elif len(user_msg) > 120:
+            user_msg = "Something went wrong. Please try again in a moment."
+        result_html = f'''
+<div class="alert alert-error" style="align-items:flex-start; gap:12px;">
+  <span style="font-size:16px; flex-shrink:0;">&#9888;</span>
+  <div>
+    <strong>Generation failed.</strong><br>
+    <span style="font-size:13px;">{user_msg}</span>
+  </div>
+  <button class="error-retry" onclick="window.scrollTo(0,0)">Try again &uarr;</button>
+</div>'''
+
     elif result:
         escaped = (result
                    .replace("&", "&amp;")
                    .replace("<", "&lt;")
                    .replace(">", "&gt;"))
         result_html = f"""
-<div class="card" style="margin-top:40px;">
-  <div class="card-title">Your Generated System</div>
+<div class="result-card">
+  <div class="result-header">
+    <span class="result-header-label">&#10024; Your System is Ready</span>
+    <div class="flex gap-8">
+      <a href="/dashboard" class="btn btn-secondary btn-sm">&#128203; Dashboard</a>
+      <form method="POST" action="/pdf_by_id" style="margin:0;">
+        <input type="hidden" name="system_id" value="{saved_id}">
+        <button class="btn btn-secondary btn-sm">&#128196; PDF</button>
+      </form>
+    </div>
+  </div>
   <div class="result-body">{escaped}</div>
+  <div class="result-footer">
+    <a href="/dashboard" class="btn btn-primary">
+      &#128293; Start Day 1
+    </a>
+    <span class="text-sm text-muted">Automatically saved to your systems.</span>
+  </div>
 </div>
-<div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:16px;">
-  <a href="/dashboard" class="btn btn-green btn-sm">&#128203; View in Dashboard</a>
-  <form method="POST" action="/pdf_by_id" style="margin:0;">
-    <input type="hidden" name="system_id" value="{saved_id}">
-    <button class="btn btn-outline btn-sm">&#128196; Download PDF</button>
-  </form>
-</div>
-<p style="margin-top:10px; font-size:13px; color:var(--muted);">
-  &#10003; Automatically saved to your Dashboard.
-</p>
 """
 
     body = f"""
-<div class="hero" style="margin-bottom:36px;">
-  <h1>Turn <span>Knowledge</span><br>into Action</h1>
-  <p>Enter your goal and a book &#8212; we'll build a daily system around your life.</p>
-  <span class="trust">Designed to close the gap between knowing and doing</span>
-</div>
-
-<div class="card-title" style="margin-bottom:10px;">&#10024; Example prompts</div>
-<div class="samples">
-  <span class="chip"><strong>Goal:</strong> Wake up at 6am &nbsp;&middot;&nbsp; <strong>Book:</strong> Atomic Habits</span>
-  <span class="chip"><strong>Goal:</strong> Build side income &nbsp;&middot;&nbsp; <strong>Book:</strong> Rich Dad Poor Dad</span>
-  <span class="chip"><strong>Goal:</strong> Read 20 books/year &nbsp;&middot;&nbsp; <strong>Book:</strong> Deep Work</span>
+<div class="page-header">
+  <h1>Build your system</h1>
+  <p>Be specific. The more honest you are, the more precise the output.</p>
 </div>
 
 <div class="card">
-  <div class="card-title">Build your system</div>
-  <p style="color:var(--muted); font-size:14px; margin-bottom:20px;">
-    The more honest you are, the more specific your system will be.
-  </p>
-  <form method="POST">
-    <div class="row">
-      <div>
+  <div class="card-header" style="margin-bottom:0; padding-bottom:0; border-bottom:none;">
+    <span class="card-label">What are you trying to fix?</span>
+  </div>
+
+  <form method="POST" style="margin-top:20px;">
+    <div class="form-grid">
+      <div class="field">
         <label>Your Goal</label>
-        <input name="goal" placeholder="e.g. wake up at 6am every day" required>
+        <input name="goal" placeholder="e.g. Wake up at 6am every day" required>
       </div>
-      <div>
+      <div class="field">
         <label>Book or Method</label>
         <input name="book" placeholder="e.g. Atomic Habits" required>
       </div>
     </div>
-    <div class="row">
-      <div>
-        <label>Daily Time Available (minutes)</label>
-        <input name="daily_time" type="number" min="5" max="240" placeholder="e.g. 30" value="30">
+
+    <div class="form-grid">
+      <div class="field">
+        <label>What habit are you trying to quit?</label>
+        <input name="struggle" placeholder="e.g. Scrolling until 2am" required>
       </div>
-      <div>
-        <label>Difficulty Level</label>
+      <div class="field">
+        <label>When do you fail? <span>(trigger or time)</span></label>
+        <input name="why" placeholder="e.g. After dinner, when I'm tired" required>
+      </div>
+    </div>
+
+    <div class="form-grid">
+      <div class="field">
+        <label>What are you procrastinating on?</label>
+        <input name="custom" placeholder="e.g. Starting the gym routine">
+      </div>
+      <div class="field">
+        <label>Your motivation</label>
+        <input name="why" placeholder="e.g. I want more energy and discipline" required>
+      </div>
+    </div>
+
+    <div class="form-grid" style="grid-template-columns: 120px 1fr; gap:16px;">
+      <div class="field">
+        <label>Daily time <span>(min)</span></label>
+        <input name="daily_time" type="number" min="5" max="240" value="30">
+      </div>
+      <div class="field">
+        <label>Difficulty</label>
         <select name="difficulty">
           <option>Easy</option>
           <option selected>Medium</option>
@@ -691,17 +1571,38 @@ Respond with exactly these 6 sections. Be specific, not generic:
         </select>
       </div>
     </div>
-    <label>Why do you want this?</label>
-    <input name="why" placeholder="Be honest &#8212; it makes the system stronger" required>
-    <label>Biggest Struggle</label>
-    <input name="struggle" placeholder="What always makes you quit?" required>
-    <label>Constraints <span style="color:var(--muted); font-weight:400;">(optional)</span></label>
-    <input name="custom" placeholder="e.g. work until 11pm, no gym, two kids">
-    <button class="btn btn-primary">Generate My System &#128640;</button>
+
+    <button id="gen-btn" class="btn btn-primary btn-lg" style="margin-top:4px; min-width:200px;">
+      Generate My System &#8594;
+    </button>
   </form>
 </div>
 
 {result_html}
+
+<script>
+(function() {{
+  var form = document.querySelector('.card form[method="POST"]');
+  var btn  = document.getElementById('gen-btn');
+  if (!form || !btn) return;
+
+  form.addEventListener('submit', function() {{
+    // Slight delay so the browser's native validation runs first
+    setTimeout(function() {{
+      if (!form.checkValidity || form.checkValidity()) {{
+        btn.classList.add('btn-loading');
+        btn.disabled = true;
+        btn.dataset.orig = btn.textContent;
+        // Fallback: re-enable after 30s in case something goes wrong
+        setTimeout(function() {{
+          btn.classList.remove('btn-loading');
+          btn.disabled = false;
+        }}, 30000);
+      }}
+    }}, 0);
+  }});
+}})();
+</script>
 """
     return page("Generator", body, active="home")
 
@@ -723,82 +1624,94 @@ def dashboard():
     ).fetchall()
     conn.close()
 
+    is_first_visit = not rows  # used for welcome banner below
+
     if not rows:
         table_html = """
-<div class="alert alert-info">
-  You haven't generated any systems yet.
-  <a href="/" style="color:inherit; font-weight:700; margin-left:6px;">
-    Create your first one &rarr;
-  </a>
+<div class="empty-state">
+  <div class="empty-icon">&#127775;</div>
+  <h3>You haven&#39;t created a system yet</h3>
+  <p>Your first behavior system takes 60 seconds to generate.</p>
+  <p class="empty-hint">Start with something simple &#8212; waking up early, reducing phone usage, or exercising daily.</p>
+  <a href="/" class="btn btn-primary btn-lg">Create your first system &rarr;</a>
 </div>"""
     else:
+        # Count stats
+        total = len(rows)
+        completed_today = sum(1 for row in rows if get_today_completion(user_id, row["id"]))
+        best_streak = max((get_streak(user_id, row["id"]) for row in rows), default=0)
+
         rows_html = ""
         for row in rows:
             try:
                 dt = datetime.strptime(row["created_at"], "%Y-%m-%d %H:%M:%S")
                 date_str = dt.strftime("%b %d, %Y")
             except Exception:
-                date_str = row["created_at"] or "&#8212;"
+                date_str = row["created_at"] or ""
 
-            goal_safe = (row["goal"] or "&#8212;").replace("<","&lt;").replace(">","&gt;")
-            book_safe = (row["book"] or "&#8212;").replace("<","&lt;").replace(">","&gt;")
+            goal_safe = (row["goal"] or "").replace("<","&lt;").replace(">","&gt;")
+            book_safe = (row["book"] or "").replace("<","&lt;").replace(">","&gt;")
 
-            # Check today's completion and current streak
             done   = get_today_completion(user_id, row["id"])
             streak = get_streak(user_id, row["id"])
 
-            btn_label = "&#10003; Done"     if done else "&#9634; Mark done"
-            btn_class = "btn-green"          if done else "btn-outline"
-            btn_title = "Click to undo"      if done else "Mark as done for today"
-
-            # Streak badge: fire emoji + count when streak > 0.
-            # data-sid lets the JS find the exact badge for this row.
-            if streak > 0:
-                streak_badge = (
-                    f'<span class="streak-badge" data-sid="{row["id"]}"'
-                    f' title="{streak}-day streak">'
-                    f'&#128293; {streak}</span>'
-                )
+            if done:
+                btn_html = f'''<button class="btn btn-done btn-sm today-btn" data-id="{row['id']}" title="Click to undo" onclick="toggleToday(this, {row['id']})">&#10003; Completed</button>'''
             else:
-                streak_badge = (
-                    f'<span class="streak-badge" data-sid="{row["id"]}"'
-                    f' title="No streak yet"></span>'
-                )
+                btn_html = f'''<button class="btn btn-mark btn-sm today-btn" data-id="{row['id']}" title="Mark as done for today" onclick="toggleToday(this, {row['id']})">Mark done</button>'''
+
+            if streak > 0:
+                streak_html = f'''<span class="streak-pill" data-sid="{row['id']}" title="{streak}-day streak">&#128293; {streak} day{"s" if streak != 1 else ""}</span>'''
+            else:
+                streak_html = f'''<span class="streak-pill empty" data-sid="{row['id']}">No streak</span>'''
 
             rows_html += f"""
 <tr>
-  <td style="font-weight:500; max-width:180px;">{goal_safe}</td>
-  <td style="color:var(--muted);">{book_safe}</td>
-  <td style="color:var(--muted); white-space:nowrap;">{date_str}</td>
-  <td style="white-space:nowrap;">
-    <button
-      class="btn {btn_class} btn-sm today-btn"
-      data-id="{row['id']}"
-      title="{btn_title}"
-      onclick="toggleToday(this, {row['id']})">
-      {btn_label}
-    </button>
-    {streak_badge}
+  <td class="goal-cell">{goal_safe}</td>
+  <td class="meta-cell">{book_safe}</td>
+  <td class="date-cell">{date_str}</td>
+  <td class="today-cell">
+    <div class="today-cell-inner">
+      {btn_html}
+      {streak_html}
+    </div>
   </td>
   <td>
-    <div style="display:flex; gap:8px;">
-      <a href="/system/{row['id']}" class="btn btn-outline btn-sm"
-         title="Read the full system">View</a>
+    <div class="action-group">
+      <a href="/system/{row['id']}" class="btn btn-secondary btn-xs">View</a>
       <form method="POST" action="/pdf_by_id" style="margin:0;">
         <input type="hidden" name="system_id" value="{row['id']}">
-        <button class="btn btn-purple btn-sm" title="Download as PDF">PDF</button>
+        <button class="btn btn-secondary btn-xs">PDF</button>
       </form>
     </div>
   </td>
 </tr>"""
 
         table_html = f"""
+<div class="stats-row">
+  <div class="stat-card">
+    <div class="stat-label">Total Systems</div>
+    <div class="stat-value">{total}</div>
+    <div class="stat-sub">behavior programs</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Done Today</div>
+    <div class="stat-value">{completed_today}</div>
+    <div class="stat-sub">of {total} systems</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Best Streak</div>
+    <div class="stat-value">{best_streak}</div>
+    <div class="stat-sub">consecutive days</div>
+  </div>
+</div>
+
 <div class="card" style="padding:0; overflow:hidden;">
-  <table class="dash-table">
+  <table class="systems-table">
     <thead>
       <tr>
         <th>Goal</th>
-        <th>Book / Method</th>
+        <th>Method</th>
         <th>Created</th>
         <th>Today</th>
         <th>Actions</th>
@@ -808,57 +1721,67 @@ def dashboard():
   </table>
 </div>"""
 
+    welcome_html = ""
+    if is_first_visit:
+        welcome_html = f"""
+<div class="welcome-banner">
+  <div class="welcome-banner-icon">&#128075;</div>
+  <div>
+    <h3>Welcome, {session.get("username", "there")}!</h3>
+    <p>This is your behavior dashboard. Build a system, mark it done each day, and watch your streak grow.</p>
+    <a href="/" class="btn btn-primary">Start by creating your first system &rarr;</a>
+  </div>
+</div>"""
+
     body = f"""
-<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; flex-wrap:wrap; gap:12px;">
-  <h2 style="margin:0;">My Systems</h2>
-  <a href="/" class="btn btn-primary btn-sm" style="width:auto;">+ New System</a>
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+  <div>
+    <h1>My Systems</h1>
+    <p>Mark each system done daily to build your streak.</p>
+  </div>
+  <a href="/" class="btn btn-primary">+ New System</a>
 </div>
-<p style="color:var(--muted); font-size:14px; margin-bottom:28px;">
-  All systems generated by
-  <strong style="color:var(--text);">{session.get("username")}</strong>.
-  Mark a system done each day to build your streak.
-</p>
+
+{welcome_html}
 {table_html}
 
 <script>
-// POST to /complete_today/<id>, then update BOTH the toggle button and the
-// streak badge without a page reload.
-// Server now returns: {{ "completed": bool, "system_id": int, "streak": int }}
 function toggleToday(btn, systemId) {{
-  btn.disabled = true;  // prevent double-clicks while in flight
+  btn.disabled = true;
+  var orig = btn.innerHTML;
 
   fetch('/complete_today/' + systemId, {{ method: 'POST' }})
     .then(function(r) {{ return r.json(); }})
     .then(function(data) {{
 
-      // --- Update the toggle button ---
       if (data.completed) {{
-        btn.textContent = '&#10003; Done';
-        btn.title       = 'Click to undo';
-        btn.className   = 'btn btn-green btn-sm today-btn';
+        btn.innerHTML  = '&#10003; Completed';
+        btn.className  = 'btn btn-done btn-sm today-btn';
+        btn.title      = 'Click to undo';
       }} else {{
-        btn.textContent = '&#9634; Mark done';
-        btn.title       = 'Mark as done for today';
-        btn.className   = 'btn btn-outline btn-sm today-btn';
+        btn.innerHTML  = 'Mark done';
+        btn.className  = 'btn btn-mark btn-sm today-btn';
+        btn.title      = 'Mark as done for today';
       }}
 
-      // --- Update the streak badge in the same <td> ---
-      // querySelector scopes to btn.parentElement so rows never
-      // interfere with each other even when IDs look similar.
-      var badge = btn.parentElement
-                    .querySelector('.streak-badge[data-sid="' + systemId + '"]');
-      if (badge) {{
+      // Update streak pill in same today-cell-inner
+      var pill = btn.parentElement.querySelector('.streak-pill[data-sid="' + systemId + '"]');
+      if (pill) {{
         if (data.streak > 0) {{
-          badge.innerHTML = '&#128293; ' + data.streak;
-          badge.title     = data.streak + '-day streak';
+          var days = data.streak === 1 ? 'day' : 'days';
+          pill.innerHTML = '&#128293; ' + data.streak + ' ' + days;
+          pill.title     = data.streak + '-day streak';
+          pill.className = 'streak-pill';
         }} else {{
-          badge.innerHTML = '';
-          badge.title     = 'No streak yet';
+          pill.innerHTML = 'No streak';
+          pill.title     = 'No streak yet';
+          pill.className = 'streak-pill empty';
         }}
       }}
     }})
     .catch(function() {{
-      btn.textContent = '&#9888; Retry';
+      btn.innerHTML = '&#9888; Retry';
+      btn.className = 'btn btn-danger btn-sm';
     }})
     .finally(function() {{
       btn.disabled = false;
@@ -898,29 +1821,34 @@ def view_system(system_id):
         date_str = row["created_at"] or ""
 
     body = f"""
-<div style="margin-bottom:24px;">
-  <a href="/dashboard" class="btn btn-outline btn-sm">&larr; Dashboard</a>
+<div class="flex gap-8 mb-16" style="margin-bottom:20px;">
+  <a href="/dashboard" class="btn btn-secondary btn-sm">&larr; My Systems</a>
 </div>
 
 <div class="card" style="margin-bottom:16px;">
-  <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+  <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px; align-items:flex-start;">
     <div>
-      <div class="card-title">System #{row['id']}</div>
-      <h2 style="margin-bottom:4px;">{goal_safe}</h2>
-      <p style="color:var(--muted); font-size:14px;">
-        &#128218; {book_safe} &nbsp;&middot;&nbsp; &#128197; {date_str}
-      </p>
+      <div class="card-title" style="margin-bottom:6px;">System #{row['id']}</div>
+      <div style="font-family:'DM Serif Display',serif; font-size:22px; color:var(--text); margin-bottom:6px;">{goal_safe}</div>
+      <div class="flex gap-8 items-center" style="flex-wrap:wrap;">
+        <span class="chip">&#128218; {book_safe}</span>
+        <span class="chip">&#128197; {date_str}</span>
+      </div>
     </div>
-    <form method="POST" action="/pdf_by_id" style="align-self:flex-start;">
+    <form method="POST" action="/pdf_by_id">
       <input type="hidden" name="system_id" value="{row['id']}">
-      <button class="btn btn-purple btn-sm" title="Download as PDF">
-        &#128196; Download PDF
-      </button>
+      <button class="btn btn-secondary btn-sm">&#128196; Download PDF</button>
     </form>
   </div>
 </div>
 
-<div class="result-body">{escaped}</div>
+<div class="result-card">
+  <div class="result-body">{escaped}</div>
+  <div class="result-footer">
+    <a href="/dashboard" class="btn btn-primary">&#128293; Mark Done Today</a>
+    <a href="/" class="btn btn-secondary">+ New System</a>
+  </div>
+</div>
 """
     return page(f"System &#8212; {goal_safe}", body)
 
@@ -1073,37 +2001,44 @@ def feedback():
         msg = (row["message"]
                .replace("&","&amp;").replace("<","&lt;").replace(">","&gt;"))
         items_html += f"""
-<div class="feedback-item">
-  <div class="feedback-author">{row['name']}</div>
-  <div>{msg}</div>
+<div class="feedback-card">
+  <div class="feedback-author">
+    <span class="feedback-author-dot"></span>{row['name']}
+  </div>
+  <div class="feedback-msg">{msg}</div>
   {reply_html}
 </div>"""
 
     if not items_html:
-        items_html = '<p style="color:var(--muted);">No feedback yet &#8212; be the first!</p>'
+        items_html = """
+<div class="empty-state" style="padding:40px 20px;">
+  <div class="empty-icon">&#128172;</div>
+  <p>No feedback yet &#8212; be the first!</p>
+</div>"""
 
     body = f"""
-<h2>Feedback Wall</h2>
+<div class="page-header">
+  <h1>Feedback</h1>
+  <p>Feature requests, bugs, or praise &#8212; all welcome.</p>
+</div>
 
-<div class="card" style="margin-bottom:36px;">
-  <div class="card-title">Share your thoughts</div>
-  <p style="color:var(--muted); font-size:14px; margin-bottom:18px;">
-    Feature requests, bugs, praise &#8212; all welcome.
-  </p>
+<div class="card" style="margin-bottom:24px;">
+  <div class="card-label" style="margin-bottom:18px;">Send a message</div>
   <form method="POST" action="/feedback_submit">
-    <label>Your name</label>
-    <input name="name" placeholder="e.g. Alex" required>
-    <label>Message</label>
-    <textarea name="message" placeholder="What's on your mind?" required></textarea>
-    <button class="btn btn-primary">Send Feedback &#128588;</button>
+    <div class="field">
+      <label>Your name</label>
+      <input name="name" placeholder="e.g. Alex" required>
+    </div>
+    <div class="field">
+      <label>Message</label>
+      <textarea name="message" placeholder="What's on your mind?" required></textarea>
+    </div>
+    <button class="btn btn-primary">Send Feedback</button>
   </form>
 </div>
 
-<h3>What people are saying</h3>
+<div class="card-label" style="margin-bottom:14px; color:var(--text-muted);">WHAT PEOPLE ARE SAYING</div>
 {items_html}
-
-<br>
-<a href="/" class="btn btn-outline">&larr; Back to Generator</a>
 """
     return page("Feedback", body, active="feedback")
 
@@ -1122,10 +2057,12 @@ def feedback_submit():
         conn.close()
 
     body = """
-<div class="alert alert-success">&#128588; Thanks! We read every message.</div>
-<a href="/feedback" class="btn btn-outline">&larr; Back to Feedback</a>
-&nbsp;
-<a href="/"         class="btn btn-outline">Go to Generator &rarr;</a>
+<div class="page-header"><h1>Thank you!</h1></div>
+<div class="alert alert-success">&#10003; We read every message. Thanks for taking the time.</div>
+<div class="flex gap-8 mt-16">
+  <a href="/feedback" class="btn btn-secondary">&larr; Back to Feedback</a>
+  <a href="/" class="btn btn-primary">Go to Generator &rarr;</a>
+</div>
 """
     return page("Feedback Received", body)
 
